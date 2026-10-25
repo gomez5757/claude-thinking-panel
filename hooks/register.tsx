@@ -114,7 +114,17 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
-    const list = await read($, blocks)
+    const all = await read($, blocks)
+    // The pane draws at most 100,000 characters, cut from the end, so keep the newest that fit.
+    let room = 80000
+    let start = all.length
+    while (start > 0) {
+      const b = all[start - 1]
+      room -= (b.es ?? b.text).length
+      if (room < 0 && start < all.length) break
+      start--
+    }
+    const list = all.slice(start)
 
     return (
       <Box flexDirection="column">
