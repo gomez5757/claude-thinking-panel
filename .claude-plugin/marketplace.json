@@ -1,0 +1,5 @@
+{
+  "name": "claude-thinking-panel",
+  "owner": { "name": "gomez5757" },
+  "plugins": [{ "name": "razonamiento", "source": "./" }]
+}

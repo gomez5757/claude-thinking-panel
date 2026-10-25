@@ -1,0 +1,140 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+
+import type { Block } from '../types'
+
+const PANE = 'razonamiento'
+const CODES: Record<string, string> = {
+  Spanish: 'es',
+  English: 'en',
+  French: 'fr',
+  German: 'de',
+  Portuguese: 'pt',
+  Italian: 'it',
+  Chinese: 'zh-CN',
+  Japanese: 'ja',
+}
+async function translate($: EngineInterface, translator: string, lang: string, text: string) {
+  if (translator === 'google-free') {
+    const r = await $.http.fetch(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${CODES[lang] ?? 'es'}&dt=t`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `q=${encodeURIComponent(text)}`,
+      },
+    )
+    if (!r.ok) return undefined
+    const parts: [string][] = JSON.parse(r.text)[0] ?? []
+    return parts.map(part => part[0]).join('')
+  }
+  const r = await $.model.complete({
+    model: 'haiku',
+    effort: 'low',
+    system: `Translate the text you are given into ${lang}. Return only the translation, no comments. Do not translate code, paths or tool names.`,
+    prompt: text,
+  })
+  return r.isAnswered ? r.text : undefined
+}
+
+const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
+
+export const register: Register = (on, options) => {
+  const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
+  const translator = options.translator === 'google-free' ? 'google-free' : 'haiku'
+
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'razonamiento',
+      description: 'Abre el panel con el razonamiento de Claude',
+    })
+    void $.ui.open({ id: PANE, title: 'Razonamiento' })
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'razonamiento' }, async $ => {
+    await $.ui.open({ id: PANE, title: 'Razonamiento' })
+
+    return { text: 'Panel de razonamiento abierto.' }
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    const prompt: Block = { id: `p-${Date.now()}`, who: 'tu', text: e.text, isDone: true, isPrompt: true }
+    await update($, blocks, list => [...list, prompt].slice(-50))
+    void $.ui.scroll({ in: PANE, to: 'end' })
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('turn.step', async function* ($, e, next) {
+    const who = e.agentId ? 'subagente' : 'Claude'
+    const texts = new Map<number, string>()
+    let lastFlush = 0
+
+    const flush = async (isDone: boolean) => {
+      lastFlush = Date.now()
+      const fresh: Block[] = [...texts].map(([index, text]) => ({
+        id: `${e.turnId}-${e.index}-${index}`,
+        who,
+        text,
+        isDone,
+      }))
+      await update($, blocks, list => {
+        const ids = new Set(fresh.map(b => b.id))
+        return [...list.filter(b => !ids.has(b.id)), ...fresh].slice(-50)
+      })
+      void $.ui.scroll({ in: PANE, to: 'end' })
+    }
+
+    const stream = next(e)
+    for await (const chunk of stream) {
+      if (chunk.kind === 'thinking') {
+        texts.set(chunk.index, (texts.get(chunk.index) ?? '') + chunk.text)
+        if (Date.now() - lastFlush > 300) await flush(false)
+      }
+      yield chunk
+    }
+    if (texts.size > 0) {
+      await flush(true)
+      if (lang !== 'off') for (const [index, text] of texts) {
+        const id = `${e.turnId}-${e.index}-${index}`
+        void translate($, translator, lang, text)
+          .catch(() => undefined)
+          .then(async es => {
+            if (!es) return
+            await update($, blocks, list => list.map(b => (b.id === id ? { ...b, es } : b)))
+            void $.ui.scroll({ in: PANE, to: 'end' })
+          })
+      }
+    }
+
+    return await stream.result
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const list = await read($, blocks)
+
+    return (
+      <Box flexDirection="column">
+        {list.length === 0 && <Text dimColor>Sin razonamiento todavia.</Text>}
+        {list.map(b =>
+          b.isPrompt ? (
+            <Box flexDirection="row" justifyContent="flex-end" marginTop={1} marginLeft={6}>
+              <Box borderStyle="round" paddingX={1} flexShrink={1}>
+                <Text>{b.text.length > 400 ? `${b.text.slice(0, 400)}...` : b.text}</Text>
+              </Box>
+            </Box>
+          ) : (
+            <Box flexDirection="column" marginTop={1}>
+              {b.who !== 'Claude' && <Text bold>{b.who}</Text>}
+              {!b.isDone && <Text bold>pensando...</Text>}
+              <Text>{b.es ?? b.text}</Text>
+            </Box>
+          ),
+        )}
+      </Box>
+    )
+  })
+}
