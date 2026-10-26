@@ -39,12 +39,14 @@ async function translate($: EngineInterface, translator: string, lang: string, t
 
 const WEEK = 7 * 24 * 60 * 60 * 1000
 
-// The pane's title carries the context in use, measured against the compaction window as the app's
-// Context panel shows it, and the weekly limit projected to its reset at the current pace.
+// The pane's title carries the context in use: the last response's real input tokens against the window
+// auto-compaction fires at (the app's Context panel measures against it too, but with estimated tokens).
+// Then the weekly limit projected to its reset at the current pace.
 async function title($: EngineInterface) {
   const { context, rateLimits } = await $.session.usage({ breakdown: 'summary' })
   const parts = ['Razonamiento']
-  if (context.breakdown) parts.push(`${context.breakdown.percentage}% contexto`)
+  const max = context.breakdown?.rawMaxTokens || context.window
+  if (context.tokens !== undefined && max) parts.push(`${Math.round((context.tokens / max) * 100)}% contexto`)
   const week = rateLimits.find(limit => limit.kind === 'seven_day')
   if (week?.resetsAt) {
     const elapsed = WEEK - (Date.parse(week.resetsAt) - Date.now())
