@@ -37,6 +37,18 @@ async function translate($: EngineInterface, translator: string, lang: string, t
   return r.isAnswered ? r.text : undefined
 }
 
+// The pane's title carries the share of the context window in use, once the session has a reading.
+async function title($: EngineInterface) {
+  const { context } = await $.session.usage()
+  return context.percent === undefined ? 'Razonamiento' : `Razonamiento - ${context.percent}% contexto`
+}
+
+// Retitle the pane in place, without reopening it if the person closed it.
+async function retitle($: EngineInterface) {
+  if (!(await $.ui.panes()).some(pane => pane.id === PANE)) return
+  await $.ui.open({ id: PANE, title: await title($) })
+}
+
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 
 export const register: Register = (on, options) => {
@@ -49,13 +61,13 @@ export const register: Register = (on, options) => {
       name: 'razonamiento',
       description: 'Abre el panel con el razonamiento de Claude',
     })
-    void $.ui.open({ id: PANE, title: 'Razonamiento' })
+    void title($).then(t => $.ui.open({ id: PANE, title: t }))
 
     return next(e)
   })
 
   on('command.run', { command: 'razonamiento' }, async $ => {
-    await $.ui.open({ id: PANE, title: 'Razonamiento' })
+    await $.ui.open({ id: PANE, title: await title($) })
 
     return { text: 'Panel de razonamiento abierto.' }
   })
@@ -110,7 +122,10 @@ export const register: Register = (on, options) => {
       }
     }
 
-    return await stream.result
+    const result = await stream.result
+    if (!e.agentId) void retitle($).catch(() => undefined)
+
+    return result
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
