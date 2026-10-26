@@ -42,6 +42,7 @@ const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
   const translator = options.translator === 'google-free' ? 'google-free' : 'haiku'
+  let lastPin = 0
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -115,6 +116,11 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const all = await read($, blocks)
+    // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
+    if (Date.now() - lastPin > 2000) {
+      lastPin = Date.now()
+      void $.clock.sleep(150).then(() => $.ui.scroll({ in: PANE, to: 'end' }))
+    }
     // The pane draws at most 100,000 characters, cut from the end, so keep the newest that fit.
     let room = 80000
     let start = all.length
