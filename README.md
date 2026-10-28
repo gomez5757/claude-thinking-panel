@@ -6,6 +6,7 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 - Thinking streams in as Claude writes it ("pensando..." while a block is still being written) and the panel scrolls to the newest text.
 - Optional translation: each finished thinking block can be translated into the language you pick, for free by Microsoft Edge's translate endpoint, with Claude Haiku (low effort) as fallback. Off by default.
 - Only the main agent's thinking is shown; subagents' thinking is left out.
+- A banner at the foot of the pane shows the weekly limit projected to its reset and the context in use, green, amber from 70% or red from 90%, with a Compactar button on the right that compacts the conversation like `/compact` (between turns only).
 
 The panel UI labels are in Spanish (the panel is titled "Razonamiento").
 

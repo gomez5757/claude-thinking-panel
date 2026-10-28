@@ -1,9 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Block } from '../types'
+import type { Block, Usage } from '../types'
 
 const PANE = 'razonamiento'
+const TITLE = 'Razonamiento'
 const CODES: Record<string, string> = {
   Spanish: 'es',
   English: 'en',
@@ -46,7 +47,7 @@ async function edge($: EngineInterface, lang: string, text: string) {
   )
   if (!r.ok) return undefined
   const parts: { translations: { text: string }[] }[] = JSON.parse(r.text)
-  return parts.map(part => part.translations[0].text).join('\n\n')
+  return parts.map(part => part.translations[0]?.text ?? '').join('\n\n')
 }
 
 // Edge first (free, no key); if it fails, Haiku at low effort through the person's own Claude session.
@@ -66,29 +67,25 @@ async function translate($: EngineInterface, translator: string, lang: string, t
 
 const WEEK = 7 * 24 * 60 * 60 * 1000
 
-// The pane's title carries the context in use: the last response's real input tokens against the window
+// The banner shows the context in use: the last response's real input tokens against the window
 // auto-compaction fires at (the app's Context panel measures against it too, but with estimated tokens).
 // Then the weekly limit projected to its reset at the current pace.
-async function title($: EngineInterface) {
+// Both go to the banner at the foot of the pane.
+async function measure($: EngineInterface) {
   const { context, rateLimits } = await $.session.usage({ breakdown: 'summary' })
-  const parts = ['Razonamiento']
+  const now: Usage = {}
   const max = context.breakdown?.rawMaxTokens || context.window
-  if (context.tokens !== undefined && max) parts.push(`${Math.round((context.tokens / max) * 100)}% contexto`)
+  if (context.tokens !== undefined && max) now.ctx = Math.round((context.tokens / max) * 100)
   const week = rateLimits.find(limit => limit.kind === 'seven_day')
   if (week?.resetsAt) {
     const elapsed = WEEK - (Date.parse(week.resetsAt) - Date.now())
-    if (elapsed > 60 * 60 * 1000) parts.push(`semana ~${Math.round((week.percentUsed * WEEK) / elapsed)}% al reinicio`)
+    if (elapsed > 60 * 60 * 1000) now.week = Math.round((week.percentUsed * WEEK) / elapsed)
   }
-  return parts.join(' - ')
-}
-
-// Retitle the pane in place, without reopening it if the person closed it.
-async function retitle($: EngineInterface) {
-  if (!(await $.ui.panes()).some(pane => pane.id === PANE)) return
-  await $.ui.open({ id: PANE, title: await title($) })
+  await update($, usage, () => now)
 }
 
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
+const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
 
 export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
@@ -100,13 +97,14 @@ export const register: Register = (on, options) => {
       name: 'razonamiento',
       description: 'Abre el panel con el razonamiento de Claude',
     })
-    void title($).then(t => $.ui.open({ id: PANE, title: t }))
+    void $.ui.open({ id: PANE, title: TITLE })
+    void measure($).catch(() => undefined)
 
     return next(e)
   })
 
   on('command.run', { command: 'razonamiento' }, async $ => {
-    await $.ui.open({ id: PANE, title: await title($) })
+    await $.ui.open({ id: PANE, title: TITLE })
 
     return { text: 'Panel de razonamiento abierto.' }
   })
@@ -163,13 +161,13 @@ export const register: Register = (on, options) => {
     }
 
     const result = await stream.result
-    if (!e.agentId) void retitle($).catch(() => undefined)
+    if (!e.agentId) void measure($).catch(() => undefined)
 
     return result
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     // Blocks saved by earlier versions may include subagents' thinking: leave it out.
     const all = (await read($, blocks)).filter(b => b.who !== 'subagente')
     // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
@@ -181,12 +179,27 @@ export const register: Register = (on, options) => {
     let room = 80000
     let start = all.length
     while (start > 0) {
-      const b = all[start - 1]
+      const b = all[start - 1]!
       room -= (b.es ?? b.text).length
       if (room < 0 && start < all.length) break
       start--
     }
     const list = all.slice(start)
+
+    // The banner: red from 90%, amber from 70%, green below, by the higher of the two figures.
+    const { ctx, week } = await read($, usage)
+    const top = Math.max(ctx ?? 0, week ?? 0)
+    const tone = top >= 90 ? 'error' : top >= 70 ? 'warning' : 'success'
+    const facts = [week !== undefined && `Semana al ~${week}%`, ctx !== undefined && `contexto ${ctx}%`].filter(Boolean)
+    const compact = async () => {
+      try {
+        const { skip } = await $.session.compact()
+        if (skip) $.ui.toast(`No se ha compactado: ${skip}`)
+        else void measure($).catch(() => undefined)
+      } catch {
+        $.ui.toast('Espera a que termine el turno para compactar.')
+      }
+    }
 
     return (
       <Box flexDirection="column">
@@ -206,6 +219,15 @@ export const register: Register = (on, options) => {
             </Box>
           ),
         )}
+        <Box flexDirection="row" alignItems="center" borderStyle="round" borderColor={tone} paddingX={1} marginTop={1}>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text color={tone}>
+              {top >= 70 ? '⚠ ' : ''}
+              {facts.join(' · ') || 'Sin datos de uso todavia'}
+            </Text>
+          </Box>
+          <Button key="compactar" label="Compactar" onPress={compact} />
+        </Box>
       </Box>
     )
   })
