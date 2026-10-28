@@ -91,6 +91,25 @@ export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
   const translator = options.translator === 'haiku' ? 'haiku' : 'edge'
   let lastPin = 0
+  // A compaction pressed while a turn runs waits here for turn.complete.
+  let isQueued = false
+
+  const compact = async ($: EngineInterface) => {
+    try {
+      const { skip } = await $.session.compact()
+      isQueued = false
+      if (skip) $.ui.toast(`No se ha compactado: ${skip}`)
+      else void measure($).catch(() => undefined)
+    } catch (err) {
+      if (isQueued) {
+        isQueued = false
+        $.ui.toast(`No se ha podido compactar: ${err instanceof Error ? err.message : String(err)}`)
+        return
+      }
+      isQueued = true
+      $.ui.toast('Se compactara al terminar el turno.')
+    }
+  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -166,6 +185,14 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  on('turn.complete', async ($, e, next) => {
+    const result = await next(e)
+    // Compact once the turn has fully ended, not from inside its hook.
+    if (isQueued && !e.agentId) void $.clock.sleep(1000).then(() => compact($))
+
+    return result
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     // Blocks saved by earlier versions may include subagents' thinking: leave it out.
@@ -189,15 +216,6 @@ export const register: Register = (on, options) => {
     // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week } = await read($, usage)
     const facts = [week !== undefined && `Semana al ~${week}%`, ctx !== undefined && `contexto ${ctx}%`].filter(Boolean)
-    const compact = async () => {
-      try {
-        const { skip } = await $.session.compact()
-        if (skip) $.ui.toast(`No se ha compactado: ${skip}`)
-        else void measure($).catch(() => undefined)
-      } catch {
-        $.ui.toast('Espera a que termine el turno para compactar.')
-      }
-    }
 
     return (
       <Box flexDirection="column">
@@ -223,7 +241,7 @@ export const register: Register = (on, options) => {
               {facts.join(' · ') || 'Sin datos de uso todavia'}
             </Text>
           </Box>
-          <Button key="compactar" label="Compactar" onPress={compact} />
+          <Button key="compactar" label="Compactar" onPress={() => compact($)} />
         </Box>
       </Box>
     )
