@@ -1,6 +1,6 @@
 {
   "name": "razonamiento",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Shows Claude's thinking live in a side panel next to the chat, with optional translation",
   "author": {
     "name": "gomez5757"

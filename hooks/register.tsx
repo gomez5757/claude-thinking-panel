@@ -186,10 +186,8 @@ export const register: Register = (on, options) => {
     }
     const list = all.slice(start)
 
-    // The banner: red from 90%, amber from 70%, green below, by the higher of the two figures.
+    // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week } = await read($, usage)
-    const top = Math.max(ctx ?? 0, week ?? 0)
-    const tone = top >= 90 ? 'error' : top >= 70 ? 'warning' : 'success'
     const facts = [week !== undefined && `Semana al ~${week}%`, ctx !== undefined && `contexto ${ctx}%`].filter(Boolean)
     const compact = async () => {
       try {
@@ -219,10 +217,9 @@ export const register: Register = (on, options) => {
             </Box>
           ),
         )}
-        <Box flexDirection="row" alignItems="center" borderStyle="round" borderColor={tone} paddingX={1} marginTop={1}>
+        <Box flexDirection="row" alignItems="center" borderStyle="round" paddingX={1} marginTop={1}>
           <Box flexGrow={1} flexShrink={1}>
-            <Text color={tone}>
-              {top >= 70 ? '⚠ ' : ''}
+            <Text>
               {facts.join(' · ') || 'Sin datos de uso todavia'}
             </Text>
           </Box>
