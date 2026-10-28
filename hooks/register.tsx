@@ -120,7 +120,7 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('turn.step', async function* ($, e, next) {
-    const who = e.agentId ? 'subagente' : 'Claude'
+    const who = 'Claude'
     const texts = new Map<number, string>()
     let lastFlush = 0
 
@@ -141,7 +141,8 @@ export const register: Register = (on, options) => {
 
     const stream = next(e)
     for await (const chunk of stream) {
-      if (chunk.kind === 'thinking') {
+      // Only the main agent's thinking goes to the panel; subagents' is passed through untouched.
+      if (chunk.kind === 'thinking' && !e.agentId) {
         texts.set(chunk.index, (texts.get(chunk.index) ?? '') + chunk.text)
         if (Date.now() - lastFlush > 300) await flush(false)
       }
@@ -169,7 +170,8 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
-    const all = await read($, blocks)
+    // Blocks saved by earlier versions may include subagents' thinking: leave it out.
+    const all = (await read($, blocks)).filter(b => b.who !== 'subagente')
     // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
     if (Date.now() - lastPin > 2000) {
       lastPin = Date.now()

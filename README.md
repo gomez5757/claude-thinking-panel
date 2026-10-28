@@ -5,7 +5,7 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 - Each of your prompts appears as a bubble on the right, with the thinking it triggered underneath, just like the chat.
 - Thinking streams in as Claude writes it ("pensando..." while a block is still being written) and the panel scrolls to the newest text.
 - Optional translation: each finished thinking block can be translated into the language you pick, for free by Microsoft Edge's translate endpoint, with Claude Haiku (low effort) as fallback. Off by default.
-- Subagent thinking is shown too, labelled "subagente".
+- Only the main agent's thinking is shown; subagents' thinking is left out.
 
 The panel UI labels are in Spanish (the panel is titled "Razonamiento").
 
