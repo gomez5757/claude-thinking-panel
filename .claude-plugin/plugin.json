@@ -1,6 +1,6 @@
 {
   "name": "razonamiento",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shows Claude's thinking live in a side panel next to the chat, with optional translation",
   "author": {
     "name": "gomez5757"
@@ -10,7 +10,7 @@
     "translateTo": {
       "type": "string",
       "title": "Translate thinking to",
-      "description": "Language the side panel translates each thinking block into with Haiku (uses a little of your usage). off shows it as written.",
+      "description": "Language the side panel translates each thinking block into. off shows it as written.",
       "default": "off",
       "options": [
         "off",
@@ -27,11 +27,11 @@
     "translator": {
       "type": "string",
       "title": "Translator",
-      "description": "haiku: Claude Haiku at low effort, uses a little of your usage. google-free: Google Translate's free web endpoint, no key and no usage, unofficial and may stop working.",
-      "default": "haiku",
+      "description": "edge: Microsoft Edge's free translate endpoint, no key and no usage, unofficial; falls back to Claude Haiku at low effort if it fails. haiku: always Claude Haiku at low effort, uses a little of your usage.",
+      "default": "edge",
       "options": [
-        "haiku",
-        "google-free"
+        "edge",
+        "haiku"
       ]
     }
   },

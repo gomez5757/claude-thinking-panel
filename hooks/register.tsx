@@ -11,22 +11,49 @@ const CODES: Record<string, string> = {
   German: 'de',
   Portuguese: 'pt',
   Italian: 'it',
-  Chinese: 'zh-CN',
+  Chinese: 'zh-Hans',
   Japanese: 'ja',
 }
+
+// Edge's translatetext endpoint fails above ~15,000 characters per text, so send paragraphs in chunks of up to 10,000.
+function chunks(text: string) {
+  const out: string[] = []
+  let cur = ''
+  for (let para of text.split('\n\n')) {
+    while (para.length > 10000) {
+      if (cur) out.push(cur)
+      cur = ''
+      out.push(para.slice(0, 10000))
+      para = para.slice(10000)
+    }
+    if (cur && cur.length + para.length + 2 > 10000) {
+      out.push(cur)
+      cur = para
+    } else cur = cur ? `${cur}\n\n${para}` : para
+  }
+  if (cur) out.push(cur)
+  return out
+}
+
+async function edge($: EngineInterface, lang: string, text: string) {
+  const r = await $.http.fetch(
+    `https://edge.microsoft.com/translate/translatetext?from=&to=${CODES[lang] ?? 'es'}&isEnterpriseClient=false`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(chunks(text)),
+    },
+  )
+  if (!r.ok) return undefined
+  const parts: { translations: { text: string }[] }[] = JSON.parse(r.text)
+  return parts.map(part => part.translations[0].text).join('\n\n')
+}
+
+// Edge first (free, no key); if it fails, Haiku at low effort through the person's own Claude session.
 async function translate($: EngineInterface, translator: string, lang: string, text: string) {
-  if (translator === 'google-free') {
-    const r = await $.http.fetch(
-      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${CODES[lang] ?? 'es'}&dt=t`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `q=${encodeURIComponent(text)}`,
-      },
-    )
-    if (!r.ok) return undefined
-    const parts: [string][] = JSON.parse(r.text)[0] ?? []
-    return parts.map(part => part[0]).join('')
+  if (translator === 'edge') {
+    const es = await edge($, lang, text).catch(() => undefined)
+    if (es) return es
   }
   const r = await $.model.complete({
     model: 'haiku',
@@ -65,7 +92,7 @@ const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 
 export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
-  const translator = options.translator === 'google-free' ? 'google-free' : 'haiku'
+  const translator = options.translator === 'haiku' ? 'haiku' : 'edge'
   let lastPin = 0
 
   on('session.start', async ($, e, next) => {

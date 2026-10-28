@@ -4,7 +4,7 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 
 - Each of your prompts appears as a bubble on the right, with the thinking it triggered underneath, just like the chat.
 - Thinking streams in as Claude writes it ("pensando..." while a block is still being written) and the panel scrolls to the newest text.
-- Optional translation: each finished thinking block can be translated into the language you pick, either by Claude Haiku (low effort) or for free by Google Translate's web endpoint. Off by default.
+- Optional translation: each finished thinking block can be translated into the language you pick, for free by Microsoft Edge's translate endpoint, with Claude Haiku (low effort) as fallback. Off by default.
 - Subagent thinking is shown too, labelled "subagente".
 
 The panel UI labels are in Spanish (the panel is titled "Razonamiento").
@@ -39,8 +39,8 @@ Two options in the plugin's config:
 
 - `translateTo`: off, Spanish, English, French, German, Portuguese, Italian, Chinese or Japanese. Default off.
 - `translator`:
-  - `haiku` (default): Claude Haiku at low effort, through your own Claude session. Good quality, uses a little of your usage per block.
-  - `google-free`: Google Translate's free web endpoint (`translate.googleapis.com`, `client=gtx`). No key, no account, no usage. It is unofficial: Google can rate-limit or stop it at any time, and your thinking text is sent to Google.
+  - `edge` (default): Microsoft Edge's free translate endpoint (`edge.microsoft.com/translate/translatetext`). No key, no account, no usage. It is unofficial: Microsoft can change or stop it at any time, and your thinking text is sent to Microsoft. Long blocks are sent in chunks of up to 10,000 characters. If Edge fails, that block is translated by Claude Haiku instead.
+  - `haiku`: always Claude Haiku at low effort, through your own Claude session. Good quality, uses a little of your subscription usage per block.
 
 While a block is being written it shows as written; once the block ends it is replaced by the translation, usually within a second or two.
 
@@ -49,14 +49,14 @@ Or set them in `~/.claude/settings.json`:
 ```json
 "pluginConfigs": {
   "razonamiento@claude-thinking-panel": {
-    "options": { "translateTo": "Spanish", "translator": "google-free" }
+    "options": { "translateTo": "Spanish", "translator": "edge" }
   }
 }
 ```
 
 ## How it works
 
-The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. It reads nothing from disk and sends nothing anywhere, except the optional translation request (to your own Claude session, or to Google with `google-free`).
+The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. It reads nothing from disk and sends nothing anywhere, except the optional translation request (to Microsoft with `edge`, or to your own Claude session with Haiku).
 
 ## License
 
