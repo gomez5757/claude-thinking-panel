@@ -84,6 +84,26 @@ async function measure($: EngineInterface) {
   await update($, usage, () => now)
 }
 
+// A compaction pressed while a turn runs waits here for turn.complete.
+let isQueued = false
+
+async function compact($: EngineInterface) {
+  try {
+    const { skip } = await $.session.compact()
+    isQueued = false
+    if (skip) $.ui.toast(`No se ha compactado: ${skip}`)
+    else void measure($).catch(() => undefined)
+  } catch (err) {
+    if (isQueued) {
+      isQueued = false
+      $.ui.toast(`No se ha podido compactar: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
+    isQueued = true
+    $.ui.toast('Se compactara al terminar el turno.')
+  }
+}
+
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
 
@@ -91,25 +111,6 @@ export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
   const translator = options.translator === 'haiku' ? 'haiku' : 'edge'
   let lastPin = 0
-  // A compaction pressed while a turn runs waits here for turn.complete.
-  let isQueued = false
-
-  const compact = async ($: EngineInterface) => {
-    try {
-      const { skip } = await $.session.compact()
-      isQueued = false
-      if (skip) $.ui.toast(`No se ha compactado: ${skip}`)
-      else void measure($).catch(() => undefined)
-    } catch (err) {
-      if (isQueued) {
-        isQueued = false
-        $.ui.toast(`No se ha podido compactar: ${err instanceof Error ? err.message : String(err)}`)
-        return
-      }
-      isQueued = true
-      $.ui.toast('Se compactara al terminar el turno.')
-    }
-  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
