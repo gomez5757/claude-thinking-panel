@@ -51,10 +51,11 @@ async function edge($: EngineInterface, lang: string, text: string) {
 }
 
 // Edge first (free, no key); if it fails, Haiku at low effort through the person's own Claude session.
+// Answers which engine translated it, so the pane can show it.
 async function translate($: EngineInterface, translator: string, lang: string, text: string) {
   if (translator === 'edge') {
     const es = await edge($, lang, text).catch(() => undefined)
-    if (es) return es
+    if (es) return { es, via: 'Edge' as const }
   }
   const r = await $.model.complete({
     model: 'haiku',
@@ -62,7 +63,7 @@ async function translate($: EngineInterface, translator: string, lang: string, t
     system: `Translate the text you are given into ${lang}. Return only the translation, no comments. Do not translate code, paths or tool names.`,
     prompt: text,
   })
-  return r.isAnswered ? r.text : undefined
+  return r.isAnswered ? { es: r.text, via: 'Haiku' as const } : undefined
 }
 
 const WEEK = 7 * 24 * 60 * 60 * 1000
@@ -172,9 +173,9 @@ export const register: Register = (on, options) => {
         const id = `${e.turnId}-${e.index}-${index}`
         void translate($, translator, lang, text)
           .catch(() => undefined)
-          .then(async es => {
-            if (!es) return
-            await update($, blocks, list => list.map(b => (b.id === id ? { ...b, es } : b)))
+          .then(async done => {
+            if (!done) return
+            await update($, blocks, list => list.map(b => (b.id === id ? { ...b, ...done } : b)))
             void $.ui.scroll({ in: PANE, to: 'end' })
           })
       }
@@ -233,6 +234,7 @@ export const register: Register = (on, options) => {
               {b.who !== 'Claude' && <Text bold>{b.who}</Text>}
               {!b.isDone && <Text bold>pensando...</Text>}
               <Text>{b.es ?? b.text}</Text>
+              {b.via && <Text dimColor>traducido con {b.via}</Text>}
             </Box>
           ),
         )}
