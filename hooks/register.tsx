@@ -77,6 +77,7 @@ async function measure($: EngineInterface) {
   const now: Usage = {}
   const max = context.breakdown?.rawMaxTokens || context.window
   if (context.tokens !== undefined && max) now.ctx = Math.round((context.tokens / max) * 100)
+  if (context.tokens !== undefined) now.tokens = context.tokens
   const week = rateLimits.find(limit => limit.kind === 'seven_day')
   if (week?.resetsAt) {
     const elapsed = WEEK - (Date.parse(week.resetsAt) - Date.now())
@@ -85,23 +86,14 @@ async function measure($: EngineInterface) {
   await update($, usage, () => now)
 }
 
-// A compaction pressed while a turn runs waits here for turn.complete.
-let isQueued = false
-
+// Runs /compact as if the person typed it: the engine queues it until the session is idle,
+// so a press during a turn waits instead of failing.
 async function compact($: EngineInterface) {
   try {
-    const { skip } = await $.session.compact()
-    isQueued = false
-    if (skip) $.ui.toast(`No se ha compactado: ${skip}`)
-    else void measure($).catch(() => undefined)
+    await $.command.run({ command: 'compact' })
+    void measure($).catch(() => undefined)
   } catch (err) {
-    if (isQueued) {
-      isQueued = false
-      $.ui.toast(`No se ha podido compactar: ${err instanceof Error ? err.message : String(err)}`)
-      return
-    }
-    isQueued = true
-    $.ui.toast('Se compactara al terminar el turno.')
+    $.ui.toast(`No se ha podido compactar: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
@@ -187,14 +179,6 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  on('turn.complete', async ($, e, next) => {
-    const result = await next(e)
-    // Compact once the turn has fully ended, not from inside its hook.
-    if (isQueued && !e.agentId) void $.clock.sleep(1000).then(() => compact($))
-
-    return result
-  })
-
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     // Blocks saved by earlier versions may include subagents' thinking: leave it out.
@@ -216,8 +200,9 @@ export const register: Register = (on, options) => {
     const list = all.slice(start)
 
     // The banner: the weekly projection and the context in use, in plain text.
-    const { ctx, week } = await read($, usage)
-    const facts = [week !== undefined && `Semana al ~${week}%`, ctx !== undefined && `contexto ${ctx}%`].filter(Boolean)
+    const { ctx, week, tokens } = await read($, usage)
+    const kTokens = tokens !== undefined ? ` · ${Math.round(tokens / 1000)}k tokens` : ''
+    const facts = [week !== undefined && `Uso al ~${week}%`, ctx !== undefined && `contexto ${ctx}%${kTokens}`].filter(Boolean)
 
     return (
       <Box flexDirection="column">
