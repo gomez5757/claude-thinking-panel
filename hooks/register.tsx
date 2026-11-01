@@ -201,8 +201,11 @@ export const register: Register = (on, options) => {
 
     // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week, tokens } = await read($, usage)
-    const kTokens = tokens !== undefined ? ` · ${Math.round(tokens / 1000)}k tokens` : ''
-    const facts = [week !== undefined && `Uso al ~${week}%`, ctx !== undefined && `contexto ${ctx}%${kTokens}`].filter(Boolean)
+    const facts = [
+      week !== undefined && `Uso ${week}%`,
+      ctx !== undefined && `Contexto ${ctx}%`,
+      tokens !== undefined && `${Math.round(tokens / 1000)}k`,
+    ].filter(Boolean)
 
     return (
       <Box flexDirection="column">
@@ -225,7 +228,7 @@ export const register: Register = (on, options) => {
         )}
         <Box flexDirection="row" alignItems="center" borderStyle="round" paddingX={1} marginTop={1}>
           <Box flexGrow={1} flexShrink={1}>
-            <Text>
+            <Text wrap="truncate-end">
               {facts.join(' · ') || 'Sin datos de uso todavia'}
             </Text>
           </Box>
