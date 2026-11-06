@@ -103,12 +103,6 @@ const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
 // Markdown takes tab and newline as its only control characters.
 const clean = (text: string) => text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '')
 
-// The field's height: its lines wrapped to the pane's width, less the field's border and padding.
-function rows(text: string, columns: number) {
-  const width = Math.max(10, columns - 4)
-  return text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / width)), 0)
-}
-
 // Follow the newest text only while the person sits at the bottom; scrolling up stops it, back to the end resumes it.
 let follow = true
 function pin($: EngineInterface) {
@@ -200,9 +194,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const ui = $.ui.resolve(e)
-    const { Box, Text, Button, Markdown } = ui
-    const Input = e.surface !== "mobile" && "Input" in ui ? ui.Input : undefined
+    const { Box, Text, Button, Markdown } = $.ui.resolve(e)
     // Blocks saved by earlier versions may include subagents' thinking: leave it out.
     const all = (await read($, blocks)).filter(b => b.who !== 'subagente')
     // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
@@ -243,13 +235,7 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginTop={1}>
               {b.who !== 'Claude' && <Text bold>{b.who}</Text>}
               {!b.isDone && <Text bold>pensando...</Text>}
-              {/* Panes take no mouse selection; a text field does, so the thinking sits in one. What is typed there is dropped. */}
-              {/* The mobile app draws no field: the text goes as before there. */}
-              {Input ? (
-                <Input key={`texto-${b.id}`} value={clean(b.es ?? b.text)} rows={rows(clean(b.es ?? b.text), e.props.bodyColumns)} onSubmit={() => undefined} />
-              ) : (
-                <Markdown text={clean(b.es ?? b.text)} />
-              )}
+              <Markdown text={clean(b.es ?? b.text)} />
             </Box>
           ),
         )}

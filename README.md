@@ -5,7 +5,6 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 - Each of your prompts appears as a bubble on the right, with the thinking it triggered underneath, just like the chat.
 - Thinking streams in as Claude writes it ("pensando..." while a block is still being written) and the panel follows the newest text while you are at the bottom. Scroll up to read and it stays put; scroll back to the end and it follows again.
 - Optional translation: each finished thinking block can be translated into the language you pick, for free by Microsoft Edge's translate endpoint, with Claude Haiku (low effort) as fallback. Off by default.
-- Each thinking block sits in a text box, so you can select any part of it with the mouse and copy it (panes themselves take no selection). What you type there is dropped. The mobile app has no text boxes, so there it is plain text.
 - Only the main agent's thinking is shown; subagents' thinking is left out.
 - A banner at the foot of the pane shows the weekly limit projected to its reset (Uso), the context in use and its tokens, with a Compactar button on the right that compacts the conversation like `/compact` (between turns only).
 

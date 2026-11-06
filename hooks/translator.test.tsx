@@ -46,12 +46,8 @@ for (const [edgeOk, via] of [
     for (let i = 0; i < 20; i++) await Promise.resolve()
 
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    expect((await ui.find({ type: 'Input', key: 'texto-t1-0-0' }))?.props.value).toBe('Hola')
+    expect((await ui.find({ type: 'Markdown', text: /^Hola$/ }))?.text).toBe('Hola')
     expect(await ui.find({ type: 'Text', text: /traducido con/ })).toBeUndefined()
     await ui.unmount()
-    // The mobile app has no text field: the block is drawn as plain text there.
-    const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
-    expect((await phone.find({ type: 'Markdown', text: /^Hola$/ }))?.text).toBe('Hola')
-    await phone.unmount()
   })
 }
