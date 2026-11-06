@@ -37,6 +37,8 @@ for (const [edgeOk, via] of [
 ] as const) {
   test(`the pane says the block was translated with ${via}`, { options: { translateTo: 'Spanish', translator: 'edge' } }, async ($, on) => {
     engine(on as any, edgeOk)
+    let copied = ''
+    on('ui.copy', (_: any, e: any) => ((copied = e.text), { value: { isCopied: true } }))
     on('command.register', () => ({ value: { command: 'razonamiento' } }))
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -46,7 +48,9 @@ for (const [edgeOk, via] of [
     for (let i = 0; i < 20; i++) await Promise.resolve()
 
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    expect((await ui.find({ type: 'Text', text: /^Hola$/ }))?.text).toBe('Hola')
+    expect((await ui.find({ type: 'Markdown', text: /^Hola$/ }))?.text).toBe('Hola')
+    await ui.press({ key: 'copiar-t1-0-0' })
+    expect(copied).toBe('Hola')
     expect((await ui.find({ type: 'Text', text: /traducido con/ }))?.text).toBe(`traducido con ${via}`)
     await ui.unmount()
   })

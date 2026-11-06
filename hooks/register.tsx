@@ -100,6 +100,9 @@ async function compact($: EngineInterface) {
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
 
+// Markdown takes tab and newline as its only control characters.
+const clean = (text: string) => text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '')
+
 // Follow the newest text only while the person sits at the bottom; scrolling up stops it, back to the end resumes it.
 let follow = true
 function pin($: EngineInterface) {
@@ -191,7 +194,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Markdown } = $.ui.resolve(e)
     // Blocks saved by earlier versions may include subagents' thinking: leave it out.
     const all = (await read($, blocks)).filter(b => b.who !== 'subagente')
     // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
@@ -232,8 +235,24 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginTop={1}>
               {b.who !== 'Claude' && <Text bold>{b.who}</Text>}
               {!b.isDone && <Text bold>pensando...</Text>}
-              <Text>{b.es ?? b.text}</Text>
-              {b.via && <Text dimColor>traducido con {b.via}</Text>}
+              {/* Markdown is drawn like a reply's text, so the person can select it; Copiar takes the whole block. */}
+              <Markdown text={clean(b.es ?? b.text)} />
+              {b.isDone && (
+                <Box flexDirection="row">
+                  <Button
+                    key={`copiar-${b.id}`}
+                    label="Copiar"
+                    plain
+                    dimColor
+                    onPress={press => void $.ui.copy({ text: b.es ?? b.text, surface: press.surface })}
+                  />
+                  {b.via && (
+                    <Box marginLeft={2}>
+                      <Text dimColor>traducido con {b.via}</Text>
+                    </Box>
+                  )}
+                </Box>
+              )}
             </Box>
           ),
         )}
