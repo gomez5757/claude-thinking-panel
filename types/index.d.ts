@@ -1,5 +1,5 @@
-export type Block = { id: string; who: string; text: string; isDone: boolean; es?: string; isPrompt?: boolean }
-export type Usage = { ctx?: number; week?: number }
+export type Block = { id: string; who: string; text: string; isDone: boolean; es?: string; via?: 'Edge' | 'Haiku'; isPrompt?: boolean }
+export type Usage = { ctx?: number; week?: number; tokens?: number }
 
 declare module 'claude-code' {
   interface PluginState {
