@@ -235,24 +235,7 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginTop={1}>
               {b.who !== 'Claude' && <Text bold>{b.who}</Text>}
               {!b.isDone && <Text bold>pensando...</Text>}
-              {/* Markdown is drawn like a reply's text, so the person can select it; Copiar takes the whole block. */}
               <Markdown text={clean(b.es ?? b.text)} />
-              {b.isDone && (
-                <Box flexDirection="row">
-                  <Button
-                    key={`copiar-${b.id}`}
-                    label="Copiar"
-                    plain
-                    dimColor
-                    onPress={press => void $.ui.copy({ text: b.es ?? b.text, surface: press.surface })}
-                  />
-                  {b.via && (
-                    <Box marginLeft={2}>
-                      <Text dimColor>traducido con {b.via}</Text>
-                    </Box>
-                  )}
-                </Box>
-              )}
             </Box>
           ),
         )}
