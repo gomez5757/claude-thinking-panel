@@ -106,7 +106,29 @@ const clean = (text: string) => text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u
 // Follow the newest text only while the person sits at the bottom; scrolling up stops it, back to the end resumes it.
 let follow = true
 function pin($: EngineInterface) {
-  if (follow) void $.ui.scroll({ in: PANE, to: 'end' })
+  if (follow) void $.ui.scroll({ in: PANE, to: 'end' }).catch(() => undefined)
+}
+
+const name = (path: unknown) => String(path ?? '').split(/[\\/]/).pop()
+const cut = (text: unknown, n = 60) => {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim()
+  return t.length > n ? `${t.slice(0, n)}...` : t
+}
+
+// One short line saying what a tool call does, in Spanish; undefined for the app's own bookkeeping tools.
+function action(e: Record<string, unknown> & { tool: string }) {
+  const t = e.tool
+  if (/^mcp__ccd_|^ToolSearch$|^TodoWrite$|^Task(Create|Update|List|Get)$/.test(t)) return undefined
+  if (t === 'Read') return `Lee ${name(e.file_path)}`
+  if (t === 'Edit' || t === 'MultiEdit') return `Edita ${name(e.file_path)}`
+  if (t === 'Write') return `Escribe ${name(e.file_path)}`
+  if (t === 'Bash' || t === 'PowerShell') return `Ejecuta: ${cut(e.description || e.command)}`
+  if (t === 'Grep' || t === 'Glob') return `Busca ${cut(e.pattern, 40)}`
+  if (t === 'Agent') return `Lanza un ayudante: ${cut(e.description)}`
+  if (t === 'Skill') return `Usa la habilidad ${cut(e.skill, 40)}`
+  if (typeof e.url === 'string') return `Abre ${cut(e.url)}`
+  if (typeof e.query === 'string' || /search/i.test(t)) return `Busca en la web: ${cut(e.query ?? e.objective)}`
+  return `Usa ${t.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, '')}`
 }
 
 export const register: Register = (on, options) => {
@@ -133,7 +155,7 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     const prompt: Block = { id: `p-${Date.now()}`, who: 'tu', text: e.text, isDone: true, isPrompt: true }
-    await update($, blocks, list => [...list, prompt].slice(-50))
+    await update($, blocks, list => [...list, prompt].slice(-120))
     pin($)
 
     return next(e)
@@ -153,8 +175,10 @@ export const register: Register = (on, options) => {
         isDone,
       }))
       await update($, blocks, list => {
-        const ids = new Set(fresh.map(b => b.id))
-        return [...list.filter(b => !ids.has(b.id)), ...fresh].slice(-50)
+        const byId = new Map(fresh.map(b => [b.id, b]))
+        const kept = list.map(b => byId.get(b.id) ?? b)
+        const known = new Set(list.map(b => b.id))
+        return [...kept, ...fresh.filter(b => !known.has(b.id))].slice(-120)
       })
       pin($)
     }
@@ -188,6 +212,18 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  // A line per tool call of the main agent, between the thinking blocks, so the panel shows what each thought led to.
+  on('tool.call', ($, e, next) => {
+    const text = e.agentId ? undefined : action(e as any)
+    if (text) {
+      const line: Block = { id: `a-${e.tool_use_id ?? Date.now()}`, who: 'Claude', text, isDone: true, isAction: true }
+      void update($, blocks, list => [...list, line].slice(-120))
+        .then(() => pin($))
+        .catch(() => undefined)
+    }
+    return next(e)
+  })
+
   on('ui.scroll', { component: 'Pane', requestId: PANE }, ($, e, next) => {
     if (e.origin.kind === 'person') follow = e.offset >= e.contentRows - e.bodyRows - 1
     return next(e)
@@ -200,7 +236,7 @@ export const register: Register = (on, options) => {
     // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
     if (follow && Date.now() - lastPin > 2000) {
       lastPin = Date.now()
-      void $.clock.sleep(150).then(() => $.ui.scroll({ in: PANE, to: 'end' }))
+      void $.clock.sleep(150).then(() => $.ui.scroll({ in: PANE, to: 'end' })).catch(() => undefined)
     }
     // The pane draws at most 100,000 characters, cut from the end, so keep the newest that fit.
     let room = 80000
@@ -215,17 +251,20 @@ export const register: Register = (on, options) => {
 
     // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week, tokens } = await read($, usage)
-    const facts = [
-      week !== undefined && `Uso ${week}%`,
+    const used = [
       ctx !== undefined && `Contexto ${ctx}%`,
       tokens !== undefined && `${Math.round(tokens / 1000)}k`,
-    ].filter(Boolean)
+    ].filter(Boolean).join(' · ')
+    // From 200k tokens in use the context goes red: time to compact.
+    const isFull = tokens !== undefined && tokens >= 200000
 
     return (
       <Box flexDirection="column">
         {list.length === 0 && <Text dimColor>Sin razonamiento todavia.</Text>}
         {list.map(b =>
-          b.isPrompt ? (
+          b.isAction ? (
+            <Text dimColor>{`→ ${b.text}`}</Text>
+          ) : b.isPrompt ? (
             <Box flexDirection="row" justifyContent="flex-end" marginTop={1} marginLeft={6}>
               <Box borderStyle="round" paddingX={1} flexShrink={1}>
                 <Text>{b.text.length > 400 ? `${b.text.slice(0, 400)}...` : b.text}</Text>
@@ -242,7 +281,9 @@ export const register: Register = (on, options) => {
         <Box flexDirection="row" alignItems="center" borderStyle="round" paddingX={1} marginTop={1}>
           <Box flexGrow={1} flexShrink={1}>
             <Text wrap="truncate-end">
-              {facts.join(' · ') || 'Sin datos de uso todavia'}
+              {week === undefined && !used && 'Sin datos de uso todavia'}
+              {week !== undefined && `Uso ${week}%${used ? ' · ' : ''}`}
+              {used && <Text color={isFull ? 'error' : undefined} bold={isFull}>{used}</Text>}
             </Text>
           </Box>
           <Button key="compactar" label="Compactar" onPress={() => compact($)} />
