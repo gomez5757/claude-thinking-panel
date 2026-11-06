@@ -104,6 +104,11 @@ export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
   const translator = options.translator === 'haiku' ? 'haiku' : 'edge'
   let lastPin = 0
+  // Follow the newest text only while the person sits at the bottom; scrolling up stops it, back to the end resumes it.
+  let follow = true
+  const pin = ($: EngineInterface) => {
+    if (follow) void $.ui.scroll({ in: PANE, to: 'end' })
+  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -125,7 +130,7 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     const prompt: Block = { id: `p-${Date.now()}`, who: 'tu', text: e.text, isDone: true, isPrompt: true }
     await update($, blocks, list => [...list, prompt].slice(-50))
-    void $.ui.scroll({ in: PANE, to: 'end' })
+    pin($)
 
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -147,7 +152,7 @@ export const register: Register = (on, options) => {
         const ids = new Set(fresh.map(b => b.id))
         return [...list.filter(b => !ids.has(b.id)), ...fresh].slice(-50)
       })
-      void $.ui.scroll({ in: PANE, to: 'end' })
+      pin($)
     }
 
     const stream = next(e)
@@ -168,7 +173,7 @@ export const register: Register = (on, options) => {
           .then(async done => {
             if (!done) return
             await update($, blocks, list => list.map(b => (b.id === id ? { ...b, ...done } : b)))
-            void $.ui.scroll({ in: PANE, to: 'end' })
+            pin($)
           })
       }
     }
@@ -179,12 +184,17 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, ($, e, next) => {
+    if (e.origin.kind === 'person') follow = e.offset >= e.contentRows - e.bodyRows - 1
+    return next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     // Blocks saved by earlier versions may include subagents' thinking: leave it out.
     const all = (await read($, blocks)).filter(b => b.who !== 'subagente')
     // A pane drawn afresh (another chat opened, the app restarted) starts at the top: pin it to the end once drawn.
-    if (Date.now() - lastPin > 2000) {
+    if (follow && Date.now() - lastPin > 2000) {
       lastPin = Date.now()
       void $.clock.sleep(150).then(() => $.ui.scroll({ in: PANE, to: 'end' }))
     }
