@@ -100,15 +100,16 @@ async function compact($: EngineInterface) {
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
 
+// Follow the newest text only while the person sits at the bottom; scrolling up stops it, back to the end resumes it.
+let follow = true
+function pin($: EngineInterface) {
+  if (follow) void $.ui.scroll({ in: PANE, to: 'end' })
+}
+
 export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
   const translator = options.translator === 'haiku' ? 'haiku' : 'edge'
   let lastPin = 0
-  // Follow the newest text only while the person sits at the bottom; scrolling up stops it, back to the end resumes it.
-  let follow = true
-  const pin = ($: EngineInterface) => {
-    if (follow) void $.ui.scroll({ in: PANE, to: 'end' })
-  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
