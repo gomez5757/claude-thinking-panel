@@ -108,6 +108,10 @@ let follow = true
 function pin($: EngineInterface) {
   if (follow) void $.ui.scroll({ in: PANE, to: 'end' }).catch(() => undefined)
 }
+// The window counts rows from the top, so dropping old blocks above it slides the text under the reader.
+// While the person reads, keep the first drawn block in place and trim nothing; trim again once they follow.
+let anchor: string | undefined
+const keep = (list: Block[]) => list.slice(follow ? -120 : -400)
 
 const name = (path: unknown) => String(path ?? '').split(/[\\/]/).pop()
 const cut = (text: unknown, n = 60) => {
@@ -155,7 +159,7 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     const prompt: Block = { id: `p-${Date.now()}`, who: 'tu', text: e.text, isDone: true, isPrompt: true }
-    await update($, blocks, list => [...list, prompt].slice(-120))
+    await update($, blocks, list => keep([...list, prompt]))
     pin($)
 
     return next(e)
@@ -178,7 +182,7 @@ export const register: Register = (on, options) => {
         const byId = new Map(fresh.map(b => [b.id, b]))
         const kept = list.map(b => byId.get(b.id) ?? b)
         const known = new Set(list.map(b => b.id))
-        return [...kept, ...fresh.filter(b => !known.has(b.id))].slice(-120)
+        return keep([...kept, ...fresh.filter(b => !known.has(b.id))])
       })
       pin($)
     }
@@ -217,7 +221,7 @@ export const register: Register = (on, options) => {
     const text = e.agentId ? undefined : action(e as any)
     if (text) {
       const line: Block = { id: `a-${e.tool_use_id ?? Date.now()}`, who: 'Claude', text, isDone: true, isAction: true }
-      void update($, blocks, list => [...list, line].slice(-120))
+      void update($, blocks, list => keep([...list, line]))
         .then(() => pin($))
         .catch(() => undefined)
     }
@@ -225,7 +229,15 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.scroll', { component: 'Pane', requestId: PANE }, ($, e, next) => {
-    if (e.origin.kind === 'person') follow = e.offset >= e.contentRows - e.bodyRows - 1
+    if (e.origin.kind === 'person') {
+      const was = follow
+      follow = e.offset >= e.contentRows - e.bodyRows - 1
+      // Back at the end of a held window: redraw with the newest blocks and pin to the end.
+      if (follow && !was) {
+        lastPin = 0
+        $.ui.invalidate('ui.render')
+      }
+    }
     return next(e)
   })
 
@@ -239,15 +251,28 @@ export const register: Register = (on, options) => {
       void $.clock.sleep(150).then(() => $.ui.scroll({ in: PANE, to: 'end' })).catch(() => undefined)
     }
     // The pane draws at most 100,000 characters, cut from the end, so keep the newest that fit.
+    // Following: the newest that fit. Reading: from the held first block forward, so nothing above moves.
     let room = 80000
     let start = all.length
-    while (start > 0) {
-      const b = all[start - 1]!
-      room -= (b.es ?? b.text).length
-      if (room < 0 && start < all.length) break
-      start--
+    let end = all.length
+    const held = follow ? -1 : all.findIndex(b => b.id === anchor)
+    if (held >= 0) {
+      start = end = held
+      while (end < all.length) {
+        room -= (all[end]!.es ?? all[end]!.text).length
+        if (room < 0 && end > start) break
+        end++
+      }
+    } else {
+      while (start > 0) {
+        const b = all[start - 1]!
+        room -= (b.es ?? b.text).length
+        if (room < 0 && start < all.length) break
+        start--
+      }
     }
-    const list = all.slice(start)
+    const list = all.slice(start, end)
+    anchor = list[0]?.id
 
     // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week, tokens } = await read($, usage)
