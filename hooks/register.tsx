@@ -5,6 +5,8 @@ import type { Block, Limit, Report, Usage, View } from '../types'
 
 const PANE = 'razonamiento'
 const TITLE = 'Razonamiento'
+// The Uso view is a second pane: the two show as tabs at the top of the same panel, which never scroll away.
+const USO = 'razonamiento-uso'
 const CODES: Record<string, string> = {
   Spanish: 'es',
   English: 'en',
@@ -147,7 +149,6 @@ async function compact($: EngineInterface) {
 
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
-const view = atom({ plugin: 'razonamiento', key: 'view' } as const, 'razon')
 const report = atom({ plugin: 'razonamiento', key: 'report' } as const, {})
 const busy = atom({ plugin: 'razonamiento', key: 'busy' } as const, false)
 
@@ -162,16 +163,10 @@ function pin($: EngineInterface) {
   if (follow && mode === 'razon') void $.ui.scroll({ in: PANE, to: 'end' }).catch(() => undefined)
 }
 
-async function show($: EngineInterface, next: View) {
-  mode = next
-  await update($, view, () => next)
-  if (next === 'uso') {
-    void $.ui.scroll({ in: PANE, to: 'start' }).catch(() => undefined)
-    if (Date.now() - lastRefresh > 60000) void refresh($)
-  } else {
-    follow = true
-    pin($)
-  }
+// Both panes, Uso first so Razonamiento is the one in front.
+async function openPanes($: EngineInterface) {
+  await $.ui.open({ id: USO, title: 'Uso' })
+  await $.ui.open({ id: PANE, title: TITLE })
 }
 
 // Money as Spain writes it: 1.234 $ from 100 up, 12,34 $ below.
@@ -276,9 +271,8 @@ export const register: Register = (on, options) => {
       name: 'razonamiento',
       description: 'Abre el panel con el razonamiento de Claude',
     })
-    void $.ui.open({ id: PANE, title: TITLE })
+    void openPanes($).catch(() => undefined)
     void measure($).catch(() => undefined)
-    mode = await read($, view)
     // Once per session: index what is new, so the history keeps what the 30-day cleanup deletes.
     void refresh($)
 
@@ -286,7 +280,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'razonamiento' }, async $ => {
-    await $.ui.open({ id: PANE, title: TITLE })
+    await openPanes($)
 
     return { text: 'Panel de razonamiento abierto.' }
   })
@@ -376,20 +370,13 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    if (e.requestId !== PANE && e.requestId !== USO) return next(e)
     const ui = $.ui.resolve(e)
     const { Box, Text, Button, Markdown } = ui
-    mode = await read($, view)
-
-    // The Uso view opens at its top, so its switch sits there (and again in the banner at its foot).
-    const tabs = (
-      <Box flexDirection="row" marginBottom={1}>
-        <Button key="ver-razon" label="Razonamiento" variant="secondary" onPress={() => void show($, 'razon')} />
-        <Box marginLeft={1}>
-          <Button key="uso-activo" label="Uso" variant="primary" onPress={() => void show($, 'uso')} />
-        </Box>
-      </Box>
-    )
+    const was = mode
+    mode = e.requestId === USO ? 'uso' : 'razon'
+    if (mode === 'uso' && was !== 'uso' && Date.now() - lastRefresh > 60000) void refresh($)
 
     // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week, tokens, limits } = await read($, usage)
@@ -407,12 +394,6 @@ export const register: Register = (on, options) => {
             {week !== undefined && `Uso ${week}%${used ? ' · ' : ''}`}
             {used && <Text color={isFull ? 'error' : undefined} bold={isFull}>{used}</Text>}
           </Text>
-        </Box>
-        {/* The Razonamiento view sits at its end, so its switch lives here, where the eye is. */}
-        <Box marginRight={1}>
-          {mode === 'razon'
-            ? <Button key="ver-uso" label="Ver uso" onPress={() => void show($, 'uso')} />
-            : <Button key="volver-razon" label="Razonamiento" onPress={() => void show($, 'razon')} />}
         </Box>
         <Button key="compactar" label="Compactar" onPress={() => compact($)} />
       </Box>
@@ -450,7 +431,6 @@ export const register: Register = (on, options) => {
 
       return (
         <Box flexDirection="column">
-          {tabs}
           <Text bold>Limites</Text>
           {lines.length === 0 && <Text dimColor>Aparecen tras la primera respuesta de la sesion.</Text>}
           {lines.map(l => <Text color={l.isOver ? 'error' : undefined}>{l.text}</Text>)}

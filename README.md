@@ -9,7 +9,7 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 - Only the main agent's thinking is shown; subagents' thinking is left out.
 - A banner at the foot of the pane shows the weekly limit projected to its reset (Uso), the context in use and its tokens (in red from 200k tokens, time to compact), with a Compactar button on the right that compacts the conversation like `/compact` (between turns only).
 
-- A switch at the top of the pane flips between the thinking (Razonamiento) and your usage (Uso). The Uso view shows:
+- Two tabs at the top of the panel, always in view, switch between the thinking (Razonamiento) and your usage (Uso). The Uso view shows:
   - your 5-hour and weekly limits, when they reset, where your pace takes them and what 1% costs;
   - spending at API prices today, yesterday, in 7 days and this month, with bars for the last 30 days and by month (Opus and Fable in orange);
   - spending by model, how much of it is thinking, cache use, subagents' share, projects, the costliest conversations and prompts of the week;
