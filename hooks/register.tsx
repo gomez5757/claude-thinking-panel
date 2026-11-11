@@ -5,8 +5,8 @@ import type { Block, Limit, Report, Usage, View } from '../types'
 
 const PANE = 'razonamiento'
 const TITLE = 'Razonamiento'
-// The Uso view is a second pane: the two show as tabs at the top of the same panel, which never scroll away.
-const USO = 'razonamiento-uso'
+// The pane's own background, under the rows that stay in place while the rest scrolls beneath them.
+const BG = '#191919'
 const CODES: Record<string, string> = {
   Spanish: 'es',
   English: 'en',
@@ -149,6 +149,7 @@ async function compact($: EngineInterface) {
 
 const blocks = atom({ plugin: 'razonamiento', key: 'blocks' } as const, [])
 const usage = atom({ plugin: 'razonamiento', key: 'usage' } as const, {})
+const view = atom({ plugin: 'razonamiento', key: 'view' } as const, 'razon')
 const report = atom({ plugin: 'razonamiento', key: 'report' } as const, {})
 const busy = atom({ plugin: 'razonamiento', key: 'busy' } as const, false)
 
@@ -163,10 +164,16 @@ function pin($: EngineInterface) {
   if (follow && mode === 'razon') void $.ui.scroll({ in: PANE, to: 'end' }).catch(() => undefined)
 }
 
-// Both panes, Uso first so Razonamiento is the one in front.
-async function openPanes($: EngineInterface) {
-  await $.ui.open({ id: USO, title: 'Uso' })
-  await $.ui.open({ id: PANE, title: TITLE })
+async function show($: EngineInterface, next: View) {
+  mode = next
+  await update($, view, () => next)
+  if (next === 'uso') {
+    void $.ui.scroll({ in: PANE, to: 'start' }).catch(() => undefined)
+    if (Date.now() - lastRefresh > 60000) void refresh($)
+  } else {
+    follow = true
+    pin($)
+  }
 }
 
 // Money as Spain writes it: 1.234 $ from 100 up, 12,34 $ below.
@@ -271,8 +278,9 @@ export const register: Register = (on, options) => {
       name: 'razonamiento',
       description: 'Abre el panel con el razonamiento de Claude',
     })
-    void openPanes($).catch(() => undefined)
+    void $.ui.open({ id: PANE, title: TITLE })
     void measure($).catch(() => undefined)
+    mode = await read($, view)
     // Once per session: index what is new, so the history keeps what the 30-day cleanup deletes.
     void refresh($)
 
@@ -280,7 +288,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'razonamiento' }, async $ => {
-    await openPanes($)
+    await $.ui.open({ id: PANE, title: TITLE })
 
     return { text: 'Panel de razonamiento abierto.' }
   })
@@ -370,13 +378,29 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== PANE && e.requestId !== USO) return next(e)
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
     const { Box, Text, Button, Markdown } = ui
-    const was = mode
-    mode = e.requestId === USO ? 'uso' : 'razon'
-    if (mode === 'uso' && was !== 'uso' && Date.now() - lastRefresh > 60000) void refresh($)
+    mode = await read($, view)
+
+    // The pane has no fixed rows of its own, so the switch and the banner are laid over the body
+    // at the rows in view, and drawn again wherever the person scrolls.
+    const { offset, bodyRows } = e.props.scroll
+    const BANNER = 3
+    const frame = (body: any, banner: any) => (
+      <Box flexDirection="column" minHeight={bodyRows} paddingTop={2} paddingBottom={BANNER + 1}>
+        {body}
+        <Box position="absolute" top={offset} left={0} right={0} backgroundColor={BG} flexDirection="row" paddingBottom={1}>
+          <Button key="ver-razon" label="Texto" variant={mode === 'razon' ? 'primary' : 'secondary'} onPress={() => void show($, 'razon')} />
+          <Box marginLeft={1}>
+            <Button key="ver-uso" label="Uso" variant={mode === 'uso' ? 'primary' : 'secondary'} onPress={() => void show($, 'uso')} />
+          </Box>
+        </Box>
+        <Box position="absolute" top={Math.max(0, offset + bodyRows - BANNER)} left={0} right={0} backgroundColor={BG}>
+          {banner}
+        </Box>
+      </Box>
+    )
 
     // The banner: the weekly projection and the context in use, in plain text.
     const { ctx, week, tokens, limits } = await read($, usage)
@@ -387,7 +411,7 @@ export const register: Register = (on, options) => {
     // From 200k tokens in use the context goes red: time to compact.
     const isFull = tokens !== undefined && tokens >= 200000
     const banner = (
-      <Box flexDirection="row" alignItems="center" borderStyle="round" paddingX={1} marginTop={1}>
+      <Box flexDirection="row" alignItems="center" borderStyle="round" paddingX={1} flexGrow={1}>
         <Box flexGrow={1} flexShrink={1}>
           <Text wrap="truncate-end">
             {week === undefined && !used && 'Sin datos de uso todavia'}
@@ -430,7 +454,7 @@ export const register: Register = (on, options) => {
         : r.generated ? `Actualizado a las ${clock(new Date(r.generated))}${r.since ? ` · datos desde ${new Date(r.since).toLocaleDateString('es-ES')}` : ''}` : 'Sin datos todavia'
 
       return (
-        <Box flexDirection="column">
+        frame(<Box flexDirection="column">
           <Text bold>Limites</Text>
           {lines.length === 0 && <Text dimColor>Aparecen tras la primera respuesta de la sesion.</Text>}
           {lines.map(l => <Text color={l.isOver ? 'error' : undefined}>{l.text}</Text>)}
@@ -460,8 +484,8 @@ export const register: Register = (on, options) => {
             </Box>
             <Button key="actualizar" label="Actualizar" onPress={() => void refresh($)} />
           </Box>
-          {banner}
-        </Box>
+
+        </Box>, banner)
       )
     }
 
@@ -497,7 +521,7 @@ export const register: Register = (on, options) => {
     anchor = list[0]?.id
 
     return (
-      <Box flexDirection="column">
+      frame(<Box flexDirection="column">
         {list.length === 0 && <Text dimColor>Sin razonamiento todavia.</Text>}
         {list.map(b =>
           b.isAction ? (
@@ -516,8 +540,8 @@ export const register: Register = (on, options) => {
             </Box>
           ),
         )}
-        {banner}
-      </Box>
+
+      </Box>, banner)
     )
   })
 }

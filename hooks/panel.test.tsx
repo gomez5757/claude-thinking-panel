@@ -29,10 +29,13 @@ test('the pane shows what Claude did and turns the context red from 200k tokens'
   // The banner's outer Text holds the red one, so look for the red run itself.
   const tree = JSON.stringify(await ui.find({}))
   expect(tree).toMatch(/"color":"error"[^}]*\},"children":\["Contexto 21% · 210k"\]/)
+  // The switch is laid at the top row in view and the banner at the last three (40 rows, scrolled to 0).
+  expect(tree).toContain('"top":0')
+  expect(tree).toContain('"top":37')
   await ui.unmount()
 })
 
-test('the Uso tab shows with the limits, the spending and the chart', async ($, on) => {
+test('the switch shows the Uso view with the limits, the spending and the chart', async ($, on) => {
   const resets = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString()
   on('session.usage', () => ({ value: { context: { window: 1000000, tokens: 50000 }, rateLimits: [{ kind: 'seven_day', percentUsed: 40, resetsAt: resets }] } }))
   on('ui.scroll', () => ({ value: {} }))
@@ -49,14 +52,11 @@ test('the Uso tab shows with the limits, the spending and the chart', async ($, 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   for (let i = 0; i < 20; i++) await Promise.resolve()
 
-  // The Razonamiento tab has no usage button any more.
-  const razon = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await razon.find({ key: 'ver-uso' })).toBeUndefined()
-  expect(await razon.find({ type: 'Text', text: /^Semana:/ })).toBeUndefined()
-  await razon.unmount()
-
-  // The Uso tab is a pane of its own.
-  const ui = await $.ui.mount({ ...PANE, requestId: 'razonamiento-uso', props: { ...PANE.props, title: 'Uso' }, surface: 'desktop' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // The switch at the top: Texto and Uso, no other usage button.
+  expect(await ui.find({ key: 'ver-razon' })).toBeDefined()
+  expect(await ui.find({ key: 'volver-razon' })).toBeUndefined()
+  await ui.press({ key: 'ver-uso' })
   for (let i = 0; i < 20; i++) await Promise.resolve()
   expect((await ui.find({ type: 'Text', text: /^Semana: 40%/ }))?.text).toMatch(/1% ≈ 10,00 \$/)
   const tree = JSON.stringify(await ui.find({}))
@@ -64,5 +64,8 @@ test('the Uso tab shows with the limits, the spending and the chart', async ($, 
   expect(tree).toContain('Este mes 1.717 $')
   expect(tree).toContain('<svg')
   expect(tree).toContain('Un consejo')
+  // Back to the thinking text.
+  await ui.press({ key: 'ver-razon' })
+  expect(await ui.find({ type: 'Text', text: /^Semana:/ })).toBeUndefined()
   await ui.unmount()
 })
