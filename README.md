@@ -7,13 +7,9 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 - Optional translation: each finished thinking block can be translated into the language you pick, for free by Microsoft Edge's translate endpoint, with Claude Haiku (low effort) as fallback. Off by default.
 - Between the thinking blocks, a dim line says what Claude did next ("→ Lee register.tsx", "→ Ejecuta: ...", "→ Busca en la web: ..."). Only the main agent's calls; the app's own bookkeeping tools are left out.
 - Only the main agent's thinking is shown; subagents' thinking is left out.
-- A banner fixed at the foot of the pane shows the weekly limit projected to its reset (Uso), the context in use and its tokens (in red from 200k tokens, time to compact), with a Compactar button on the right that compacts the conversation like `/compact` (between turns only).
-
-- A Texto / Uso switch at the top and the usage banner at the foot stay in view while you scroll; the switch flips between the thinking and your usage. The Uso view shows:
-  - your 5-hour and weekly limits, when they reset, where your pace takes them and what 1% costs;
-  - spending at API prices today, yesterday, in 7 days and this month, with bars for the last 30 days and by month (Opus and Fable in orange);
-  - spending by model, how much of it is thinking, cache use, subagents' share, projects, the costliest conversations and prompts of the week;
-  - tips taken from your own logs: files read over and over, repeated commands, huge tool results, long contexts, expensive subagents.
+- A banner at the foot of the pane shows the weekly limit projected to its reset (Uso), the context in use and its tokens (in red from 200k tokens, time to compact), with a Compactar button on the right that compacts the conversation like `/compact` (between turns only).
+- `/uso` opens a web page in your browser about your usage. At the top, when your pace runs out the weekly and the 5-hour limits. Then what you spend at API prices with the month's forecast, the limits with their history, the last 24 hours by hour, what your plan is worth per month at API prices per model and how many times it returns what you pay, this month against the last, spending per day by model, projects, models, the hours you spend at, the most expensive conversations and prompts with a search box, and tips. Buttons pick the period and a list or a click on a project filters by project; a click on a day shows that day's conversations and prompts. `scripts/uso_web.py` builds it from the transcripts, kept in `~/.claude/uso/uso.db`, into `~/.claude/uso/uso.html`; the panel rebuilds it with the live limits after a turn, at most every 10 minutes, so it is ready without typing `/uso`, and the open page reloads itself. Opened on its own, it shows the last limits the panel saved.
+- The panel keeps every change of your limits' percentages in `~/.claude/uso/limites.json`. The plan's worth per model comes from those readings against what was spent in the same window: until there are enough, every model is assumed to use the limit alike per API dollar.
 
 The panel UI labels are in Spanish (the panel is titled "Razonamiento").
 
@@ -64,13 +60,7 @@ Or set them in `~/.claude/settings.json`:
 
 ## How it works
 
-The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. The Uso view reads your transcripts on disk (see Usage data). Nothing is sent anywhere, except the optional translation request (to Microsoft with `edge`, or to your own Claude session with Haiku).
-
-## Usage data
-
-The Uso view runs `scripts/uso.py` (Python 3, standard library only) once per session and when you open the view, at most once a minute. It reads your transcripts in `~/.claude/projects`, only the part added since last time, and keeps a small database at `~/.claude/uso/uso.db`, so your history survives the 30-day cleanup of old transcripts. Nothing stays running and nothing is sent anywhere. The first read of a large history takes a few minutes; the pane says how many files are left.
-
-Prices are the public API prices per model. Cost on a subscription is not money you pay: it shows what the usage is worth, which is how the limits are measured. To change a price, write `~/.claude/uso/precios.json` with the model id and its prices per million tokens.
+The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. It reads nothing from disk and sends nothing anywhere, except the optional translation request (to Microsoft with `edge`, or to your own Claude session with Haiku).
 
 ## License
 

@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Uso de Claude</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10); --wash: rgba(11,11,11,.05);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; --up: #006300;
+  --q1: #cde2fb; --q2: #9ec5f4; --q3: #6da7ec; --q4: #3987e5; --q5: #256abf; --q6: #184f95; --q7: #0d366b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10); --wash: rgba(255,255,255,.06);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --up: #0ca30c;
+    --q1: #184f95; --q2: #1c5cab; --q3: #256abf; --q4: #2a78d6; --q5: #5598e7; --q6: #86b6ef; --q7: #b7d3f6;
+  }
+}
+* { box-sizing: border-box }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif }
+main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px }
+h1 { font-size: 24px; margin: 0 }
+h2 { font-size: 15px; margin: 0 }
+.sub { color: var(--muted); font-size: 13px; margin: 2px 0 0 }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; position: sticky; top: 0; z-index: 5;
+  background: var(--page); padding: 12px 0; margin-top: 8px; border-bottom: 1px solid var(--grid) }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; background: var(--surface) }
+.seg button { border: 0; background: none; color: var(--ink2); font: inherit; padding: 6px 12px; cursor: pointer }
+.seg button + button { border-left: 1px solid var(--ring) }
+.seg button:hover { background: var(--wash) }
+.seg button[aria-pressed=true] { color: var(--ink); font-weight: 600; background: var(--wash) }
+select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 10px }
+.chip { display: none; align-items: center; gap: 6px; border: 1px solid var(--ring); border-radius: 999px; padding: 3px 4px 3px 12px; background: var(--surface) }
+.chip button { border: 0; background: var(--wash); color: var(--ink); border-radius: 999px; width: 22px; height: 22px; cursor: pointer }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 18px 20px }
+.card > .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px }
+.grid { display: grid; gap: 16px; margin-top: 16px }
+.g4 { grid-template-columns: repeat(4, 1fr) }
+.g2 { grid-template-columns: 1fr 1fr }
+.g32 { grid-template-columns: 3fr 2fr }
+@media (max-width: 900px) { .g4 { grid-template-columns: 1fr 1fr } .g2, .g32 { grid-template-columns: 1fr } }
+.tile .label { color: var(--ink2); font-size: 13px }
+.tile .value { font-size: 28px; font-weight: 650; margin: 2px 0 }
+.tile .delta { font-size: 13px; color: var(--ink2) }
+.delta .upgood { color: var(--up); font-weight: 600 }
+.delta .upbad { color: var(--critical); font-weight: 600 }
+.limit + .limit { margin-top: 18px }
+.limit .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px }
+.limit .pct { font-size: 22px; font-weight: 650 }
+.track { position: relative; height: 12px; border-radius: 6px; background: var(--grid); margin: 8px 0 6px }
+.track .fill { position: absolute; inset: 0 auto 0 0; border-radius: 6px; background: var(--s1) }
+.track .pace { position: absolute; top: -4px; width: 2px; height: 20px; background: var(--ink) }
+.track .end { position: absolute; top: -4px; left: calc(100% - 1px); width: 2px; height: 20px; background: var(--axis) }
+.status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600 }
+.status i { width: 10px; height: 10px; border-radius: 50%; display: inline-block }
+.small { font-size: 13px; color: var(--ink2) }
+.muted { color: var(--muted) }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--ink2) }
+.legend > span { display: inline-flex; align-items: center; gap: 6px }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block }
+svg { display: block; width: 100%; overflow: visible }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums }
+.gl { stroke: var(--grid); stroke-width: 1 }
+.bl { stroke: var(--axis); stroke-width: 1 }
+.hit { fill: transparent; cursor: pointer }
+.hit:hover { fill: var(--wash) }
+.hbar { display: grid; grid-template-columns: minmax(90px, 32%) 1fr auto; gap: 10px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer }
+.hbar:hover, .hbar.on { background: var(--wash) }
+.hbar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.hbar .bar { height: 14px; border-radius: 0 4px 4px 0; background: var(--s1); min-width: 2px }
+.hbar .v { font-variant-numeric: tabular-nums; color: var(--ink2) }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--axis); cursor: pointer; user-select: none; white-space: nowrap }
+td { padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: top }
+th.n, td.n { text-align: right; white-space: nowrap }
+td .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px }
+details summary { cursor: pointer; color: var(--ink2); font-size: 13px; margin-top: 10px }
+.tips li + li { margin-top: 10px }
+.tips { margin: 0; padding-left: 18px }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.15); display: none; min-width: 150px }
+#tip b { display: block; margin-bottom: 4px }
+#tip .r { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums }
+.heat { display: grid; grid-template-columns: 30px repeat(24, 1fr); gap: 2px; font-size: 11px; color: var(--muted) }
+.heat div.c { aspect-ratio: 1.6; border-radius: 3px; background: var(--grid) }
+.heat .hl { text-align: center }
+.empty { color: var(--muted); padding: 12px 0 }
+.hero { margin-top: 14px; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--ring); background: var(--surface); display: flex; gap: 12px; align-items: flex-start; font-size: 15px }
+.hero i { flex: none; width: 12px; height: 12px; border-radius: 50%; margin-top: 5px }
+.big { font-size: 34px; font-weight: 700; line-height: 1.1 }
+.plans { display: inline-flex }
+input[type=search] { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 10px; min-width: 220px }
+th[data-k]:hover { color: var(--ink) }
+th .arrow { opacity: .7 }
+.split { display: grid; grid-template-columns: 2fr 3fr; gap: 12px 32px; align-items: start }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr } }
+.note { font-size: 12px; color: var(--muted); margin: 10px 0 0 }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Uso de Claude</h1>
+      <p class="sub" id="stamp"></p>
+    </div>
+  </header>
+
+  <div class="hero" id="hero" style="display:none"></div>
+
+  <div class="filters">
+    <div class="seg" id="range" role="group" aria-label="Periodo">
+      <button data-r="7">7 dias</button><button data-r="30">30 dias</button><button data-r="90">90 dias</button>
+      <button data-r="mes">Este mes</button><button data-r="todo">Todo</button>
+    </div>
+    <select id="project" aria-label="Proyecto"></select>
+    <span class="chip" id="chip"><span id="chipText"></span><button title="Quitar filtro" id="chipX">×</button></span>
+    <span class="chip" id="dayChip"><span id="dayText"></span><button title="Quitar el dia" id="dayX">×</button></span>
+  </div>
+
+  <section class="grid g4" id="tiles"></section>
+
+  <section class="grid g2">
+    <div class="card">
+      <div class="head"><h2>Limites de tu plan</h2><span class="small">en este momento</span></div>
+      <div id="limits"></div>
+      <div id="history"></div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Ultimas 24 horas</h2><span class="small">la zona sombreada es tu ventana de 5 horas</span></div>
+      <div id="last24"></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <div class="head"><h2>Lo que te da tu plan</h2>
+        <div class="seg plans" id="plans" role="group" aria-label="Tu plan"><button data-p="pro">Pro</button><button data-p="max">Max</button><button data-p="ultra">Ultra</button></div></div>
+      <div id="plan" class="split"></div>
+    </div>
+  </section>
+
+  <section class="grid g2">
+    <div class="card">
+      <div class="head"><h2>Este mes frente al anterior</h2><span class="small">gasto acumulado</span></div>
+      <div id="cum"></div>
+      <div class="legend" id="cumLegend"></div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Por meses</h2></div>
+      <div id="months"></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <div class="head"><h2>Gasto por dia</h2><div class="legend" id="dayLegend"></div></div>
+      <p class="small muted" style="margin:-6px 0 6px">Pulsa un dia para ver sus conversaciones y peticiones.</p>
+      <div id="days"></div>
+      <details><summary>Ver como tabla</summary><div id="daysTable"></div></details>
+    </div>
+  </section>
+
+  <section class="grid g2">
+    <div class="card">
+      <div class="head"><h2>Proyectos</h2><span class="small">pulsa uno para filtrar</span></div>
+      <div id="projects"></div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Modelos</h2></div>
+      <div id="models"></div>
+    </div>
+  </section>
+
+  <section class="grid g2">
+    <div class="card">
+      <div class="head"><h2>Cuando gastas</h2><span class="small">por dia de la semana y hora</span></div>
+      <div id="heat"></div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Consejos para gastar menos</h2><span class="small">ultimos 7 dias</span></div>
+      <ul class="tips" id="tips"></ul>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <div class="head"><h2>Conversaciones mas caras</h2><input type="search" id="q" placeholder="Buscar en conversaciones y peticiones"></div>
+      <p class="small muted" id="convNote" style="margin:-6px 0 6px"></p>
+      <div id="convs"></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <div class="head"><h2>Peticiones mas caras</h2><span class="small">lo que costo cada mensaje tuyo</span></div>
+      <div id="prompts"></div>
+    </div>
+  </section>
+</main>
+<div id="tip"></div>
+
+<script>
+const D = /*DATA*/null;
+const FAM = [
+  { key: 'opus', name: 'Opus', color: 'var(--s1)' },
+  { key: 'fable', name: 'Fable', color: 'var(--s2)' },
+  { key: 'sonnet', name: 'Sonnet', color: 'var(--s3)' },
+  { key: 'haiku', name: 'Haiku', color: 'var(--s4)' },
+]
+const famOf = m => Math.max(0, FAM.findIndex(f => m.includes(f.key)))
+const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const MESL = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+const DIAS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+const DAY = 86400000
+
+const money = n => {
+  n = n || 0
+  if (Math.abs(n) >= 100) return Math.round(n).toLocaleString('es-ES', { useGrouping: 'always' }) + ' $'
+  return n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $'
+}
+const short = n => (n >= 1000 ? (n / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + 'k $' : n.toLocaleString('es-ES', { maximumFractionDigits: n < 10 ? 1 : 0 }) + ' $')
+const pct = n => Math.round(n) + '%'
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const $ = id => document.getElementById(id)
+const key = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
+// Calendar arithmetic by date, not by 24 h steps, so the October and March clock changes lose no day.
+const addDays = (k, n) => { const d = parse(k); return key(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)) }
+const span = (a, b) => Math.round((parse(b) - parse(a)) / DAY) + 1
+const nice = d => `${d.getDate()} ${MES[d.getMonth()]}`
+
+const now = new Date(D.generated)
+const today = key(now)
+const projOf = D.sessions.map(s => s[1])
+const projects = [...new Set(projOf)]
+
+// The filters live in the address too (#r=7&p=AURORA), so a reload or a bookmark keeps them.
+const state = { range: '30', project: 'all', day: null, q: '', sort: { k: 'cost', dir: -1 } }
+const h = new URLSearchParams(location.hash.slice(1))
+if (['7', '30', '90', 'mes', 'todo'].includes(h.get('r'))) state.range = h.get('r')
+if (projects.includes(h.get('p'))) state.project = h.get('p')
+if (/^\d{4}-\d{2}-\d{2}$/.test(h.get('d') || '')) state.day = h.get('d')
+
+// Rows are [day, session, model, cost, subagent cost, cache read, input total, output, thinking, messages].
+function window_(r) {
+  if (r === 'mes') return { from: key(new Date(now.getFullYear(), now.getMonth(), 1)), to: today, days: now.getDate() }
+  if (r === 'todo') {
+    const first = D.days[0] || today
+    return { from: first, to: today, days: span(first, today) }
+  }
+  const n = Number(r)
+  return { from: addDays(today, 1 - n), to: today, days: n }
+}
+const inProject = s => state.project === 'all' || projOf[s] === state.project
+const rowsIn = (from, to) => D.rows.filter(r => { const d = D.days[r[0]]; return d >= from && d <= to && inProject(r[1]) })
+const sum = (rows, i) => rows.reduce((a, r) => a + r[i], 0)
+
+// Tooltip
+const tip = $('tip')
+function showTip(ev, html) {
+  tip.innerHTML = html
+  tip.style.display = 'block'
+  const w = tip.offsetWidth, h = tip.offsetHeight
+  let x = ev.clientX + 14, y = ev.clientY + 14
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14
+  tip.style.left = x + 'px'
+  tip.style.top = y + 'px'
+}
+const hideTip = () => (tip.style.display = 'none')
+const tipRows = (title, pairs) => `<b>${esc(title)}</b>` + pairs.map(([k, v, c]) =>
+  `<div class="r"><span>${c ? `<span class="dot" style="background:${c}"></span>` : ''}${esc(k)}</span><span>${v}</span></div>`).join('')
+
+function ticks(max) {
+  if (max <= 0) return [0]
+  const raw = max / 4
+  const p = Math.pow(10, Math.floor(Math.log10(raw)))
+  const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= raw)
+  const out = []
+  for (let v = 0; v <= max + step * 0.001; v += step) out.push(v)
+  if (out[out.length - 1] < max) out.push(out[out.length - 1] + step)
+  return out
+}
+
+// Stacked bars: one column per period, a stack per model family.
+function stacked(el, cols, opts = {}) {
+  const W = el.clientWidth || 900, H = opts.h || 240, L = 46, B = 24, T = 8
+  const max = Math.max(...cols.map(c => c.total), 0.01)
+  const tk = ticks(max), top = tk[tk.length - 1]
+  const y = v => T + (H - T - B) * (1 - v / top)
+  const step = (W - L) / Math.max(cols.length, 1)
+  const bw = Math.max(2, Math.min(36, step * 0.72))
+  let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${esc(opts.label || '')}">`
+  if (opts.shade) s += `<rect x="${L + opts.shade[0] * step}" y="${T}" width="${(opts.shade[1] - opts.shade[0] + 1) * step}" height="${H - T - B}" fill="var(--wash)"/>`
+  tk.forEach(v => { s += `<line class="gl" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${short(v)}</text>` })
+  const every = Math.ceil(cols.length / Math.max(1, Math.floor((W - L) / 64)))
+  cols.forEach((c, i) => {
+    const x = L + i * step + (step - bw) / 2
+    let base = 0
+    s += `<g opacity="${opts.selected === undefined || opts.selected === i ? 1 : 0.35}">`
+    const segs = c.parts.map((v, f) => ({ v, f })).filter(p => p.v > 0)
+    segs.forEach((p, j) => {
+      const y0 = y(base), y1 = y(base + p.v)
+      const isTop = j === segs.length - 1
+      const hgt = Math.max(0, y0 - y1 - (isTop ? 0 : 2))
+      const r = isTop ? Math.min(4, bw / 2, hgt) : 0
+      const fill = opts.colors ? opts.colors[p.f] : FAM[p.f].color
+      s += r > 0
+        ? `<path d="M${x},${y0}V${y1 + r}Q${x},${y1} ${x + r},${y1}H${x + bw - r}Q${x + bw},${y1} ${x + bw},${y1 + r}V${y0}Z" fill="${fill}"/>`
+        : `<rect x="${x}" y="${y1 + (isTop ? 0 : 2)}" width="${bw}" height="${hgt}" fill="${fill}"/>`
+      base += p.v
+    })
+    s += '</g>'
+    if (i % every === 0 || i === cols.length - 1) s += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${esc(c.label)}</text>`
+    s += `<rect class="hit" data-i="${i}" x="${L + i * step}" y="${T}" width="${step}" height="${H - T - B}"/>`
+  })
+  s += `<line class="bl" x1="${L}" x2="${W}" y1="${y(0)}" y2="${y(0)}"/></svg>`
+  el.innerHTML = s
+  el.querySelectorAll('.hit').forEach(h => {
+    const c = cols[Number(h.dataset.i)]
+    h.addEventListener('mousemove', ev => showTip(ev, opts.tip(c)))
+    h.addEventListener('mouseleave', hideTip)
+    if (opts.onClick) h.addEventListener('click', () => opts.onClick(c))
+  })
+}
+
+function tiles(rows, prev, w, prevFrom) {
+  const cost = sum(rows, 3), before = sum(prev, 3)
+  const covered = prevFrom && D.full && prevFrom >= D.full
+  const delta = covered && before > 0 ? ((cost - before) / before) * 100 : null
+  const active = new Set(rows.filter(r => r[3] > 0).map(r => r[0])).size
+  // Over "Todo" the calendar has a long stretch with no records, so the average counts the days with use.
+  const avg = cost / Math.max(1, state.range === 'todo' ? active : w.days)
+  // Month projection: this month so far at this month's daily pace.
+  const m0 = key(new Date(now.getFullYear(), now.getMonth(), 1))
+  const month = sum(D.rows.filter(r => D.days[r[0]] >= m0 && inProject(r[1])), 3)
+  const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const elapsed = now.getDate() - 1 + (now.getHours() * 60 + now.getMinutes()) / 1440
+  const forecast = elapsed > 0.5 ? (month / elapsed) * dim : null
+  const inTot = sum(rows, 6), cache = inTot ? (sum(rows, 5) / inTot) * 100 : 0
+  const sub = cost ? (sum(rows, 4) / cost) * 100 : 0
+  const deltaTxt = delta === null ? 'sin datos completos del periodo anterior para comparar'
+    : `<span class="${delta > 0 ? 'upbad' : 'upgood'}">${delta > 0 ? '▲' : '▼'} ${pct(Math.abs(delta))}</span> frente a los ${w.days} dias anteriores`
+  $('tiles').innerHTML = [
+    ['Gasto en el periodo', money(cost), deltaTxt],
+    ['Media por dia', money(avg), state.range === 'todo' ? `contando solo los ${active} dias con registros` : `${active} de ${w.days} dias con uso`],
+    [`Previsto para ${MESL[now.getMonth()]}`, forecast === null ? '-' : money(forecast), `llevas ${money(month)} este mes`],
+    ['Memoria intermedia', pct(cache), `de lo que Claude vuelve a leer se cobra a precio rebajado. Ayudantes: ${pct(sub)} del gasto`],
+  ].map(([l, v, d]) => `<div class="card tile"><div class="label">${l}</div><div class="value">${v}</div><div class="delta">${d}</div></div>`).join('')
+}
+
+function limits() {
+  const L = D.limits || []
+  if (!L.length) { $('limits').innerHTML = '<p class="empty">Tus limites apareceran solos en cuanto Claude termine su proxima respuesta.</p>'; return }
+  $('limits').innerHTML = L.filter(l => l.kind === 'five_hour' || l.kind === 'seven_day').map(l => {
+    const isWeek = l.kind === 'seven_day', span = isWeek ? 7 * DAY : 5 * 3600000
+    const end = l.resetsAt ? Date.parse(l.resetsAt) : null
+    const elapsed = end ? span - (end - Date.now()) : 0
+    const pace = end && elapsed > span / 10 ? (l.pct * span) / elapsed : null
+    const st = pace === null ? null : pace > 100 ? ['critical', 'Te pasaras'] : pace > 90 ? ['warning', 'Muy justo'] : ['good', 'Vas bien']
+    const spent = D.w[isWeek ? 'w7' : 'w5']
+    const when = end ? (d => isWeek ? `el ${DIAS[(d.getDay() + 6) % 7]} a las ${d.toTimeString().slice(0, 5)}` : `a las ${d.toTimeString().slice(0, 5)}`)(new Date(end)) : ''
+    return `<div class="limit"><div class="row"><h2>${isWeek ? 'Semana' : 'Ultimas 5 horas'}</h2><span class="pct">${pct(l.pct)}</span></div>
+      <div class="track"><div class="fill" style="width:${Math.min(100, l.pct)}%;background:${st ? `var(--${st[0]})` : 'var(--s1)'}"></div>
+      ${pace !== null ? `<div class="pace" style="left:${Math.min(100, pace)}%" title="A este ritmo"></div>` : ''}</div>
+      <div class="row small"><span>${st ? `<span class="status"><i style="background:var(--${st[0]})"></i>${st[1]}</span> · a este ritmo llegas al ${pct(pace)}` : ''}</span>
+      <span>se reinicia ${when}</span></div>
+      ${spent && l.pct >= 1 ? `<div class="small muted">Cada 1% te cuesta unos ${money(spent / l.pct)} a precio de la API.</div>` : ''}</div>`
+  }).join('') + '<p class="small muted" style="margin-top:14px">La raya negra marca donde llegas si sigues al mismo ritmo hasta que se reinicie.</p>'
+}
+
+function days(rows, w) {
+  const byDay = new Map()
+  for (const r of rows) {
+    const d = D.days[r[0]]
+    if (!byDay.has(d)) byDay.set(d, [0, 0, 0, 0])
+    byDay.get(d)[famOf(D.models[r[2]])] += r[3]
+  }
+  const cols = []
+  for (let k = w.from; k <= w.to; k = addDays(k, 1)) {
+    const d = parse(k), parts = byDay.get(k) || [0, 0, 0, 0]
+    cols.push({ label: nice(d), date: d, parts, total: parts.reduce((a, b) => a + b, 0) })
+  }
+  const sel = cols.findIndex(c => key(c.date) === state.day)
+  stacked($('days'), cols, {
+    label: 'Gasto por dia', selected: sel >= 0 ? sel : undefined,
+    onClick: c => { state.day = state.day === key(c.date) ? null : key(c.date); render() },
+    tip: c => tipRows(`${DIAS[(c.date.getDay() + 6) % 7]} ${nice(c.date)}`, [...FAM.map((f, i) => [f.name, money(c.parts[i]), f.color]).filter((_, i) => c.parts[i] > 0), ['Total', `<b>${money(c.total)}</b>`]]),
+  })
+  const used = FAM.filter((_, i) => cols.some(c => c.parts[i] > 0))
+  $('dayLegend').innerHTML = used.map(f => `<span><i style="background:${f.color}"></i>${f.name}</span>`).join('')
+  $('daysTable').innerHTML = `<table><tr><th>Dia</th>${used.map(f => `<th class="n">${f.name}</th>`).join('')}<th class="n">Total</th></tr>` +
+    cols.slice().reverse().map(c => `<tr><td>${nice(c.date)}</td>${used.map(f => `<td class="n">${money(c.parts[FAM.indexOf(f)])}</td>`).join('')}<td class="n">${money(c.total)}</td></tr>`).join('') + '</table>'
+}
+
+function cumulative() {
+  const y = now.getFullYear(), m = now.getMonth()
+  const series = [[y, m], [m ? y : y - 1, m ? m - 1 : 11]].map(([yy, mm]) => {
+    const dim = new Date(yy, mm + 1, 0).getDate(), v = new Array(dim).fill(0)
+    const pre = `${yy}-${String(mm + 1).padStart(2, '0')}-`
+    for (const r of D.rows) { const d = D.days[r[0]]; if (d.startsWith(pre) && inProject(r[1])) v[Number(d.slice(8)) - 1] += r[3] }
+    for (let i = 1; i < dim; i++) v[i] += v[i - 1]
+    const total = (D.months.find(x => x.m === pre.slice(0, 7)) || {}).cost
+    return { name: MESL[mm], v: mm === m ? v.slice(0, now.getDate()) : v, color: mm === m ? 'var(--s1)' : 'var(--muted)', dim, total, full: !!D.full && pre + '01' >= D.full }
+  })
+  const [cur, prev] = series
+  // Forecast: this month's pace carried to its last day.
+  const soFar = cur.v[cur.v.length - 1] || 0
+  const elapsed = now.getDate() - 1 + (now.getHours() * 60 + now.getMinutes()) / 1440
+  const forecast = elapsed > 0.5 ? (soFar / elapsed) * cur.dim : null
+  // Without the previous month day by day, only its total is sure (the whole project, all projects only).
+  const prevLevel = !prev.full && state.project === 'all' ? prev.total : null
+  const el = $('cum'), W = el.clientWidth || 500, H = 220, L = 46, B = 24, T = 8
+  const max = Math.max(...series.filter(s => s === cur || s.full).flatMap(s => s.v), forecast || 0, prevLevel || 0, 0.01), tk = ticks(max), top = tk[tk.length - 1]
+  const X = i => L + ((W - L - 8) * i) / 30, Y = v => T + (H - T - B) * (1 - v / top)
+  let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Gasto acumulado del mes">`
+  tk.forEach(v => { s += `<line class="gl" x1="${L}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${short(v)}</text>` })
+  ;[1, 8, 15, 22, 29].forEach(d => { s += `<text x="${X(d - 1)}" y="${H - 6}" text-anchor="middle">dia ${d}</text>` })
+  if (prevLevel) s += `<line x1="${L}" x2="${W}" y1="${Y(prevLevel)}" y2="${Y(prevLevel)}" stroke="var(--muted)" stroke-width="2" stroke-dasharray="6 5"/><text x="${W}" y="${Y(prevLevel) - 6}" text-anchor="end">total de ${prev.name}</text>`
+  if (forecast) s += `<line x1="${X(cur.v.length - 1)}" y1="${Y(soFar)}" x2="${X(cur.dim - 1)}" y2="${Y(forecast)}" stroke="var(--s1)" stroke-width="2" stroke-dasharray="4 4" opacity=".7"/>`
+  series.filter(se => se === cur || se.full).reverse().forEach(se => {
+    s += `<polyline fill="none" stroke="${se.color}" stroke-width="2" stroke-linejoin="round" points="${se.v.map((v, i) => `${X(i)},${Y(v)}`).join(' ')}"/>`
+    const i = se.v.length - 1
+    if (i >= 0) s += `<circle cx="${X(i)}" cy="${Y(se.v[i])}" r="4" fill="${se.color}" stroke="var(--surface)" stroke-width="2"/>`
+  })
+  s += `<line class="bl" x1="${L}" x2="${W}" y1="${Y(0)}" y2="${Y(0)}"/><line id="cross" class="bl" y1="${T}" y2="${H - B}" style="display:none"/>`
+  s += `<rect class="hit" id="cumHit" x="${L}" y="${T}" width="${W - L}" height="${H - T - B}" style="cursor:crosshair"/></svg>`
+  el.innerHTML = s
+  const hit = $('cumHit'), cross = $('cross')
+  hit.addEventListener('mousemove', ev => {
+    const box = hit.getBoundingClientRect()
+    const i = Math.max(0, Math.min(30, Math.round(((ev.clientX - box.left) / box.width) * ((W - L) / (W - L - 8)) * 30)))
+    cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.style.display = ''
+    const lines = series.filter(se => se === cur || se.full).map(se => [se.name, se.v[i] !== undefined ? money(se.v[i]) : '-', se.color])
+    if (forecast && i >= cur.v.length) lines.push(['Prevision', money(soFar + ((forecast - soFar) * (i - cur.v.length + 1)) / (cur.dim - cur.v.length)), 'var(--s1)'])
+    showTip(ev, tipRows(`Hasta el dia ${i + 1}`, lines))
+  })
+  hit.addEventListener('mouseleave', () => { cross.style.display = 'none'; hideTip() })
+  const same = prev.full ? prev.v[Math.min(cur.v.length, prev.v.length) - 1] || 0 : 0
+  const diff = same ? ((soFar - same) / same) * 100 : null
+  const ref = prev.full ? prev.v[prev.v.length - 1] : prevLevel
+  $('cumLegend').innerHTML = `<span><i style="background:var(--s1)"></i>${cur.name}</span>` +
+    (prev.full ? `<span><i style="background:var(--muted)"></i>${prev.name}</span>` : prevLevel ? `<span><i style="background:var(--muted)"></i>total de ${prev.name}</span>` : '') +
+    `<p class="small" style="flex-basis:100%;margin:6px 0 0">` +
+    (diff !== null ? `A estas alturas vas un <b>${pct(Math.abs(diff))} ${diff > 0 ? 'por encima' : 'por debajo'}</b> de ${prev.name}. ` : '') +
+    (forecast ? `Al ritmo de este mes acabaras en <b>${money(forecast)}</b>${ref ? `, frente a ${money(ref)} de ${prev.name}` : ''}.` : '') + '</p>'
+}
+
+function projectsCard(rows) {
+  const by = new Map()
+  for (const r of D.rows.filter(r => { const d = D.days[r[0]]; return d >= curW.from && d <= curW.to })) by.set(projOf[r[1]], (by.get(projOf[r[1]]) || 0) + r[3])
+  const list = [...by].sort((a, b) => b[1] - a[1])
+  const top = list.slice(0, 10), rest = list.slice(10).reduce((a, p) => a + p[1], 0)
+  if (rest > 0) top.push(['Otros', rest])
+  const max = Math.max(...top.map(p => p[1]), 0.01), total = list.reduce((a, p) => a + p[1], 0) || 1
+  $('projects').innerHTML = top.length ? top.map(([n, v]) =>
+    `<div class="hbar${state.project === n ? ' on' : ''}" data-p="${esc(n)}" title="${esc(n)}"><span class="name">${esc(n)}</span>
+     <div><div class="bar" style="width:${(v / max) * 100}%"></div></div><span class="v">${money(v)} · ${pct((v / total) * 100)}</span></div>`).join('')
+    : '<p class="empty">Sin gasto en este periodo.</p>'
+  $('projects').querySelectorAll('.hbar').forEach(b => b.addEventListener('click', () => {
+    const p = b.dataset.p
+    if (p === 'Otros') return
+    setProject(state.project === p ? 'all' : p)
+  }))
+}
+
+function modelsCard(rows) {
+  const by = new Map()
+  for (const r of rows) {
+    const m = D.models[r[2]], v = by.get(m) || { cost: 0, out: 0, think: 0, n: 0 }
+    v.cost += r[3]; v.out += r[7]; v.think += r[8]; v.n += r[9]
+    by.set(m, v)
+  }
+  const list = [...by].filter(([, v]) => v.cost >= 0.01).sort((a, b) => b[1].cost - a[1].cost)
+  const total = list.reduce((a, [, v]) => a + v.cost, 0) || 1
+  $('models').innerHTML = list.length ? `<table><tr><th>Modelo</th><th class="n">Gasto</th><th class="n">%</th><th class="n">Respuestas</th><th class="n">Razonando</th></tr>` +
+    list.map(([m, v]) => `<tr><td><span class="dot" style="background:${FAM[famOf(m)].color}"></span>${esc(m)}</td><td class="n">${money(v.cost)}</td>
+      <td class="n">${pct((v.cost / total) * 100)}</td><td class="n">${v.n.toLocaleString('es-ES')}</td><td class="n">${v.think ? pct((v.think / v.out) * 100) : '-'}</td></tr>`).join('') +
+    '</table><p class="small muted">Razonando: la parte de lo que escribe el modelo que es razonamiento. Se cobra como texto escrito.</p>'
+    : '<p class="empty">Sin gasto en este periodo.</p>'
+}
+
+function heat(w) {
+  const grid = Array.from({ length: 7 }, () => new Array(24).fill(0))
+  for (const h of D.heat) {
+    const d = D.days[h[0]]
+    if (d < w.from || d > w.to || !inProject(h[2])) continue
+    grid[(parse(d).getDay() + 6) % 7][h[1]] += h[4]
+  }
+  const max = Math.max(...grid.flat(), 0.01)
+  const step = v => (v <= 0 ? null : `var(--q${Math.min(7, 1 + Math.floor((v / max) * 6.999))})`)
+  let s = '<div class="heat"><span></span>' + Array.from({ length: 24 }, (_, h) => `<span class="hl">${h % 3 === 0 ? h : ''}</span>`).join('')
+  grid.forEach((row, d) => {
+    s += `<span>${DIAS[d].slice(0, 3)}</span>` + row.map((v, h) => `<div class="c" data-d="${d}" data-h="${h}" style="${step(v) ? `background:${step(v)}` : ''}"></div>`).join('')
+  })
+  $('heat').innerHTML = s + '</div><div class="legend" style="margin-top:10px"><span>Menos</span>' +
+    [1, 2, 3, 4, 5, 6, 7].map(i => `<i style="background:var(--q${i})"></i>`).join('') + '<span>Mas</span></div>'
+  $('heat').querySelectorAll('.c').forEach(c => {
+    const d = Number(c.dataset.d), h = Number(c.dataset.h)
+    c.addEventListener('mousemove', ev => showTip(ev, tipRows(`${DIAS[d]} de ${h}:00 a ${h + 1}:00`, [['Gasto', money(grid[d][h])]])))
+    c.addEventListener('mouseleave', hideTip)
+  })
+}
+
+function months() {
+  let cols
+  if (state.project === 'all') cols = D.months.map(m => ({ k: m.m, total: m.cost }))
+  else {
+    const by = new Map()
+    for (const r of D.rows) if (inProject(r[1])) { const k = D.days[r[0]].slice(0, 7); by.set(k, (by.get(k) || 0) + r[3]) }
+    cols = [...by].sort().map(([k, v]) => ({ k, total: v }))
+  }
+  cols = cols.slice(-12).map(c => ({ ...c, parts: [c.total], label: `${MES[Number(c.k.slice(5)) - 1]} ${c.k.slice(2, 4)}` }))
+  if (!cols.length) { $('months').innerHTML = '<p class="empty">Sin datos.</p>'; return }
+  stacked($('months'), cols, {
+    h: 220, colors: ['var(--s1)'], label: 'Gasto por meses',
+    tip: c => tipRows(`${MESL[Number(c.k.slice(5)) - 1]} ${c.k.slice(0, 4)}`, [['Gasto', money(c.total)]]),
+  })
+}
+
+const match = t => !state.q || String(t).toLowerCase().includes(state.q)
+function convs(rows) {
+  const by = new Map()
+  if (state.day) rows = rows.filter(r => D.days[r[0]] === state.day)
+  for (const r of rows) {
+    const v = by.get(r[1]) || { cost: 0, n: 0, last: '', fam: [0, 0, 0, 0] }
+    v.cost += r[3]; v.n += r[9]; v.fam[famOf(D.models[r[2]])] += r[3]
+    if (D.days[r[0]] > v.last) v.last = D.days[r[0]]
+    by.set(r[1], v)
+  }
+  const get = { title: ([s]) => D.sessions[s][0].toLowerCase(), project: ([s]) => D.sessions[s][1].toLowerCase(), last: ([, v]) => v.last, n: ([, v]) => v.n, cost: ([, v]) => v.cost }
+  const { k, dir } = state.sort
+  const list = [...by].filter(([s]) => match(D.sessions[s][0]) || match(D.sessions[s][1]))
+    .sort((a, b) => (get[k](a) > get[k](b) ? 1 : get[k](a) < get[k](b) ? -1 : 0) * dir).slice(0, state.q ? 50 : 15)
+  $('convNote').textContent = state.day ? `Gasto del ${nice(parse(state.day))}.` : 'Gasto dentro del periodo elegido. Pulsa una columna para ordenar.'
+  const th = (key_, label, n) => `<th data-k="${key_}"${n ? ' class="n"' : ''}>${label}${k === key_ ? ` <span class="arrow">${dir < 0 ? '▼' : '▲'}</span>` : ''}</th>`
+  $('convs').innerHTML = list.length ? `<table><tr>${th('title', 'Conversacion')}${th('project', 'Proyecto')}${th('last', 'Ultimo dia')}${th('n', 'Respuestas', 1)}${th('cost', 'Gasto', 1)}</tr>` +
+    list.map(([s, v]) => {
+      const main = FAM[v.fam.indexOf(Math.max(...v.fam))]
+      return `<tr><td><span class="dot" style="background:${main.color}" title="Sobre todo ${main.name}"></span>${esc(D.sessions[s][0])}</td><td>${esc(D.sessions[s][1])}</td>
+        <td>${nice(parse(v.last))}</td><td class="n">${v.n.toLocaleString('es-ES')}</td><td class="n"><b>${money(v.cost)}</b></td></tr>`
+    }).join('') + '</table>' : '<p class="empty">Sin conversaciones que encajen.</p>'
+  $('convs').querySelectorAll('th[data-k]').forEach(t => t.addEventListener('click', () => {
+    state.sort = { k: t.dataset.k, dir: state.sort.k === t.dataset.k ? -state.sort.dir : t.dataset.k === 'title' || t.dataset.k === 'project' ? 1 : -1 }
+    lists()
+  }))
+}
+
+function promptsCard(w) {
+  const from = parse(w.from).getTime()
+  const list = D.prompts.filter(p => p.ts >= from && inProject(p.s) && (!state.day || key(new Date(p.ts)) === state.day) && match(p.text)).slice(0, state.q ? 40 : 10)
+  $('prompts').innerHTML = list.length ? '<table>' + list.map(p =>
+    `<tr><td><div class="t" title="${esc(p.text)}">${esc(p.text)}</div><span class="small muted">${esc(D.sessions[p.s][1])} · ${nice(new Date(p.ts))}</span></td><td class="n"><b>${money(p.cost)}</b></td></tr>`).join('') + '</table>'
+    : '<p class="empty">Ninguna que encaje.</p>'
+}
+
+function tipsCard() {
+  $('tips').innerHTML = D.tips.length ? D.tips.map(t => `<li><b>${esc(t.title)}.</b> <span class="small">${esc(t.detail)}</span></li>`).join('') : '<li>Nada que mejorar esta semana.</li>'
+}
+
+// The plan: prices from claude.com/pricing (checked 11/11/2026). Weekly allowance in Pro units: Pro 1, Max 5, Ultra 10.
+const PLANS = {
+  pro: { name: 'Pro', price: 20, credits: 0, mult: 1 },
+  max: { name: 'Max', price: 100, credits: 100, mult: 5 },
+  ultra: { name: 'Ultra', price: 200, credits: 200, mult: 10 },
+}
+const MONTH_WEEKS = 52 / 12
+const hasFive = (D.limits || []).some(l => l.kind === 'five_hour')
+state.plan = localStorage.getItem('uso-plan') || ((D.limits || []).length && !hasFive ? 'ultra' : 'max')
+const dur = ms => {
+  const h = Math.round(ms / 3600000)
+  return h >= 24 ? `${Math.floor(h / 24)} ${Math.floor(h / 24) === 1 ? 'dia' : 'dias'}${h % 24 ? ` y ${h % 24} h` : ''}` : `${Math.max(1, h)} h`
+}
+const at = d => `el ${DIAS[(d.getDay() + 6) % 7]} a las ${d.toTimeString().slice(0, 5)}`
+
+// Where the current pace takes a limit, and when it would reach 100%.
+function pace(kind) {
+  const l = (D.limits || []).find(x => x.kind === kind)
+  if (!l || !l.resetsAt) return null
+  const span = kind === 'seven_day' ? 7 * DAY : 5 * 3600000
+  const end = Date.parse(l.resetsAt), elapsed = span - (end - D.generated)
+  if (elapsed < (kind === 'seven_day' ? span / 10 : 20 * 60000) || l.pct <= 0) return { l, end }
+  const hit = D.generated + ((100 - l.pct) * elapsed) / l.pct
+  return { l, end, pace: (l.pct * span) / elapsed, hit: hit < end ? hit : null }
+}
+
+function hero() {
+  const w = pace('seven_day'), f = pace('five_hour')
+  if (!w) return ($('hero').style.display = 'none')
+  let color, text
+  if (w.hit) {
+    color = 'critical'
+    text = `<b>Al ritmo de esta semana te quedaras sin limite semanal ${at(new Date(w.hit))}</b>, ${dur(w.end - w.hit)} antes de que se reinicie (${at(new Date(w.end))}).`
+  } else if (w.pace > 90) {
+    color = 'warning'
+    text = `<b>Vas justo:</b> a este ritmo acabaras la semana cerca del ${pct(w.pace)} del limite. Se reinicia ${at(new Date(w.end))}.`
+  } else if (w.pace) {
+    color = 'good'
+    text = `<b>Vas bien:</b> a este ritmo acabaras la semana en el ${pct(w.pace)} del limite. Se reinicia ${at(new Date(w.end))}.`
+  } else {
+    color = 'good'
+    text = `Llevas el ${pct(w.l.pct)} del limite semanal; la semana acaba de empezar.`
+  }
+  if (f && f.hit) text += ` En la ventana de 5 horas llegaras al tope a las ${new Date(f.hit).toTimeString().slice(0, 5)}, y se libera a las ${new Date(f.end).toTimeString().slice(0, 5)}.`
+  $('hero').innerHTML = `<i style="background:var(--${color})"></i><div>${text}</div>`
+  $('hero').style.display = 'flex'
+}
+
+function plan() {
+  document.querySelectorAll('#plans button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.p === state.plan)))
+  const P = D.plan, mine = PLANS[state.plan]
+  if (!P) {
+    $('plan').innerHTML = '<p class="empty">Se calcula solo en cuanto Claude termine su proxima respuesta: hace falta leer tu limite semanal.</p>'
+    return
+  }
+  const wk = P.families.map(f => f.week)
+  // Your mix over the last 30 days, all projects: what a full week is worth used the way you use Claude.
+  const from = addDays(today, -29), mix = [0, 0, 0, 0]
+  let spent30 = 0
+  for (const r of D.rows) if (D.days[r[0]] >= from) { mix[famOf(D.models[r[2]])] += r[3]; spent30 += r[3] }
+  const tot = mix.reduce((a, b) => a + b, 0) || 1
+  const week = 1 / mix.reduce((a, v, i) => a + v / tot / wk[i], 0)
+  const month = week * MONTH_WEEKS
+  const times = month / mine.price
+  const used = (spent30 / (week * (30 / 7))) * 100
+  const rows = FAM.map((f, i) => {
+    // Fable can take at most half of the weekly limit on Max and Ultra.
+    const cap = i === 1 && state.plan !== 'pro' ? 0.5 : 1
+    const v = wk[i] * cap
+    return `<tr><td><span class="dot" style="background:${f.color}"></span>Solo ${f.name}${cap < 1 ? '*' : ''}</td>
+      <td class="n">${money(v)}</td><td class="n"><b>${money(v * MONTH_WEEKS)}</b></td><td class="n">${((v * MONTH_WEEKS) / mine.price).toLocaleString('es-ES', { maximumFractionDigits: 0 })}x</td>
+      <td class="small">${P.families[i].measured ? 'medido con tus datos' : 'supuesto igual que el resto'}</td></tr>`
+  }).join('')
+  const others = Object.entries(PLANS).filter(([k]) => k !== state.plan)
+    .map(([, p]) => `${p.name} (${p.price} $) unos ${money((month / mine.mult) * p.mult)}`).join(' · ')
+  $('plan').innerHTML = `<div><div class="big">${money(month)} <span class="small" style="font-weight:400">al mes en precio de API</span></div>
+    <p class="small" style="margin:4px 0 12px">Usando Claude como lo usas ahora. Pagas ${mine.price} $: <b>te devuelve unas ${times.toLocaleString('es-ES', { maximumFractionDigits: 0 })} veces lo que cuesta</b>${mine.credits ? `, y ademas trae ${mine.credits} $ al mes en creditos de API` : ''}. En los ultimos 30 dias has aprovechado el <b>${pct(used)}</b> de lo que da.</p>
+    <p class="note">Con tu misma forma de usarlo: ${others}.</p>
+    <p class="note">Sale de comparar tu limite semanal real con lo que has gastado en ese tiempo, con ${P.readings} ${P.readings === 1 ? 'lectura' : 'lecturas'} desde el ${new Date(P.first).toLocaleDateString('es-ES')}. Mientras haya pocas, se supone que cada dolar de API gasta igual de limite en todos los modelos. Con mas lecturas, el panel separa cada modelo; se guardan solas mientras usas Claude.</p></div>
+    <div><table><tr><th>Si usas</th><th class="n">Semana completa</th><th class="n">Al mes</th><th class="n">Tu cuota</th><th>Dato</th></tr>${rows}</table>
+    <p class="note">* Fable puede gastar como mucho la mitad del limite semanal en Max y Ultra, por eso su fila es la mitad.</p></div>`
+}
+
+function limitHistory() {
+  const H = (D.history || []).filter(h => h[0] >= D.generated - 21 * DAY)
+  if (H.length < 2) {
+    $('history').innerHTML = '<p class="note">El historial del limite semanal se guarda desde hoy. Aqui veras como sube cada semana.</p>'
+    return
+  }
+  const el = $('history'), W = el.clientWidth || 500, Hh = 120, L = 34, B = 20, T = 8
+  const t0 = H[0][0], t1 = D.generated
+  const X = t => L + ((W - L) * (t - t0)) / Math.max(1, t1 - t0), Y = v => T + (Hh - T - B) * (1 - Math.min(110, v) / 110)
+  let s = `<svg viewBox="0 0 ${W} ${Hh}" height="${Hh}" role="img" aria-label="Limite semanal en el tiempo">`
+  ;[0, 50, 100].forEach(v => { s += `<line class="gl" x1="${L}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}"${v === 100 ? ' stroke-dasharray="4 4"' : ''}/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v}%</text>` })
+  let seg = []
+  const flush = () => { if (seg.length) s += `<polyline fill="none" stroke="var(--s1)" stroke-width="2" points="${seg.join(' ')}"/>`; seg = [] }
+  H.forEach((h, i) => { if (i && h[2] !== H[i - 1][2]) flush(); seg.push(`${X(h[0])},${Y(h[1])}`) })
+  flush()
+  s += `<text x="${L}" y="${Hh - 4}">${nice(new Date(t0))}</text><text x="${W}" y="${Hh - 4}" text-anchor="end">ahora</text></svg>`
+  el.innerHTML = `<h2 style="margin:18px 0 6px;font-size:13px">Limite semanal, ultimas semanas</h2>` + s
+}
+
+function last24() {
+  const start = D.generated - 23 * 3600000
+  const cols = []
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(start + i * 3600000)
+    cols.push({ date: d, k: key(d), h: d.getHours(), parts: [0, 0, 0, 0], total: 0, label: `${d.getHours()}h` })
+  }
+  const idx = new Map(cols.map((c, i) => [`${c.k}|${c.h}`, i]))
+  for (const h of D.heat) {
+    const i = idx.get(`${D.days[h[0]]}|${h[1]}`)
+    if (i === undefined || !inProject(h[2])) continue
+    cols[i].parts[h[3]] += h[4]
+    cols[i].total += h[4]
+  }
+  const f = (D.limits || []).find(l => l.kind === 'five_hour' && l.resetsAt)
+  let shade
+  if (f) {
+    const from = Date.parse(f.resetsAt) - 5 * 3600000
+    const i0 = cols.findIndex(c => c.date.getTime() + 3600000 > from)
+    if (i0 >= 0) shade = [i0, 23]
+  }
+  stacked($('last24'), cols, {
+    h: 200, label: 'Gasto por hora en las ultimas 24 horas', shade,
+    tip: c => tipRows(`De ${c.h}:00 a ${c.h + 1}:00`, [...FAM.map((x, i) => [x.name, money(c.parts[i]), x.color]).filter((_, i) => c.parts[i] > 0), ['Total', `<b>${money(c.total)}</b>`]]),
+  })
+}
+
+let curW
+function render() {
+  curW = window_(state.range)
+  if (state.day && (state.day < curW.from || state.day > curW.to)) state.day = null
+  const rows = rowsIn(curW.from, curW.to)
+  const pw = { to: addDays(curW.from, -1) }
+  pw.from = addDays(pw.to, 1 - curW.days)
+  const prev = state.range === 'todo' ? [] : rowsIn(pw.from, pw.to)
+  history.replaceState(null, '', '#' + new URLSearchParams({ r: state.range, ...(state.project === 'all' ? {} : { p: state.project }), ...(state.day ? { d: state.day } : {}) }))
+  document.querySelectorAll('#range button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.r === state.range)))
+  $('project').value = state.project
+  $('chip').style.display = state.project === 'all' ? 'none' : 'inline-flex'
+  $('chipText').textContent = state.project
+  $('dayChip').style.display = state.day ? 'inline-flex' : 'none'
+  $('dayText').textContent = state.day ? nice(parse(state.day)) : ''
+  hero()
+  plan()
+  limitHistory()
+  last24()
+  tiles(rows, prev, curW, state.range === 'todo' ? null : pw.from)
+  limits()
+  cumulative()
+  days(rows, curW)
+  projectsCard(rows)
+  modelsCard(rows)
+  heat(curW)
+  months()
+  lists(rows)
+  tipsCard()
+}
+let lastRows = []
+function lists(rows = lastRows) {
+  lastRows = rows
+  convs(rows)
+  promptsCard(curW)
+}
+function setProject(p) { state.project = p; render() }
+
+$('stamp').textContent = `Actualizado el ${now.toLocaleDateString('es-ES')} a las ${now.toTimeString().slice(0, 5)} · datos desde el ${parse(D.days[0] || today).toLocaleDateString('es-ES')} · gasto calculado a precio de la API · se actualiza sola mientras usas Claude`
+$('project').innerHTML = '<option value="all">Todos los proyectos</option>' + projects.sort((a, b) => a.localeCompare(b, 'es')).map(p => `<option>${esc(p)}</option>`).join('')
+$('project').addEventListener('change', e => setProject(e.target.value))
+$('chipX').addEventListener('click', () => setProject('all'))
+$('dayX').addEventListener('click', () => { state.day = null; render() })
+$('q').addEventListener('input', e => { state.q = e.target.value.trim().toLowerCase(); lists() })
+document.querySelectorAll('#plans button').forEach(b => b.addEventListener('click', () => { state.plan = b.dataset.p; localStorage.setItem('uso-plan', state.plan); plan() }))
+// Claude rebuilds this file after its turns; while the tab is in view it reloads itself, filters kept in the address.
+setInterval(() => { if (document.visibilityState === 'visible' && document.activeElement !== $('q')) location.reload() }, 5 * 60000)
+document.querySelectorAll('#range button').forEach(b => b.addEventListener('click', () => { state.range = b.dataset.r; render() }))
+let resize
+addEventListener('resize', () => { clearTimeout(resize); resize = setTimeout(render, 150) })
+render()
+</script>
+</body>
+</html>
