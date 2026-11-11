@@ -381,12 +381,12 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button, Markdown } = ui
     mode = await read($, view)
 
-    // The switch at the top: one pane, two views.
+    // The Uso view opens at its top, so its switch sits there (and again in the banner at its foot).
     const tabs = (
       <Box flexDirection="row" marginBottom={1}>
-        <Button key="ver-razon" label="Razonamiento" variant={mode === 'razon' ? 'primary' : 'secondary'} onPress={() => void show($, 'razon')} />
+        <Button key="ver-razon" label="Razonamiento" variant="secondary" onPress={() => void show($, 'razon')} />
         <Box marginLeft={1}>
-          <Button key="ver-uso" label="Uso" variant={mode === 'uso' ? 'primary' : 'secondary'} onPress={() => void show($, 'uso')} />
+          <Button key="uso-activo" label="Uso" variant="primary" onPress={() => void show($, 'uso')} />
         </Box>
       </Box>
     )
@@ -407,6 +407,12 @@ export const register: Register = (on, options) => {
             {week !== undefined && `Uso ${week}%${used ? ' · ' : ''}`}
             {used && <Text color={isFull ? 'error' : undefined} bold={isFull}>{used}</Text>}
           </Text>
+        </Box>
+        {/* The Razonamiento view sits at its end, so its switch lives here, where the eye is. */}
+        <Box marginRight={1}>
+          {mode === 'razon'
+            ? <Button key="ver-uso" label="Ver uso" onPress={() => void show($, 'uso')} />
+            : <Button key="volver-razon" label="Razonamiento" onPress={() => void show($, 'razon')} />}
         </Box>
         <Button key="compactar" label="Compactar" onPress={() => compact($)} />
       </Box>
@@ -512,7 +518,6 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        {tabs}
         {list.length === 0 && <Text dimColor>Sin razonamiento todavia.</Text>}
         {list.map(b =>
           b.isAction ? (
