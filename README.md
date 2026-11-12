@@ -9,7 +9,7 @@ A Claude Code mod that shows Claude's thinking live in a side panel next to the 
 - Only the main agent's thinking is shown; subagents' thinking is left out.
 - A banner at the foot of the pane shows the weekly limit projected to its reset (Uso), the context in use and its tokens (in red from 200k tokens, time to compact), with a Compactar button on the right that compacts the conversation like `/compact` (between turns only).
 - `/uso` opens a web page in your browser about your usage. At the top, when your pace runs out the weekly and the 5-hour limits. Then what you spend at API prices with the month's forecast, the limits with their history, the last 24 hours by hour, what your plan is worth per month at API prices per model and how many times it returns what you pay, this month against the last, spending per day by model, projects, models, the hours you spend at, the most expensive conversations and prompts with a search box, and tips. Buttons pick the period and a list or a click on a project filters by project; a click on a day shows that day's conversations and prompts. `scripts/uso_web.py` builds it from the transcripts, kept in `~/.claude/uso/uso.db`, into `~/.claude/uso/uso.html`; the panel rebuilds it with the live limits after a turn, at most every 10 minutes, so it is ready without typing `/uso`, and the open page reloads itself. Opened on its own, it shows the last limits the panel saved.
-- The panel keeps every change of your limits' percentages in `~/.claude/uso/limites.json`. The plan's worth per model comes from those readings against what was spent in the same window: until there are enough, every model is assumed to use the limit alike per API dollar.
+- The panel keeps every change of your limits' percentages in `~/.claude/uso/limites.json`. The plan's worth per model weighs each model's tokens by how fast it spends the limit, with weights measured on a subscription in September 2026 (cache reads count very little); the size of your weekly limit comes from those readings against what was spent in the same window, and until there are any, from the size measured on the plans.
 
 The panel UI labels are in Spanish (the panel is titled "Razonamiento").
 
@@ -60,7 +60,7 @@ Or set them in `~/.claude/settings.json`:
 
 ## How it works
 
-The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. It reads nothing from disk and sends nothing anywhere, except the optional translation request (to Microsoft with `edge`, or to your own Claude session with Haiku).
+The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. For the usage banner and the `/uso` page it reads your Claude Code transcripts in `~/.claude/projects` on your own computer and writes its files to `~/.claude/uso`; nothing of that leaves your computer. The only thing sent anywhere is the optional translation request (to Microsoft with `edge`, or to your own Claude session with Haiku).
 
 ## License
 

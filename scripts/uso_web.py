@@ -39,60 +39,74 @@ def family(model):
     return next((i for i, f in enumerate(FAMILIES) if f in (model or '')), 0)
 
 
-def solve(a, b):
-    # Gaussian elimination for the small normal equations of the fit; standard library only.
-    n = len(b)
-    m = [row[:] + [b[i]] for i, row in enumerate(a)]
-    for c in range(n):
-        p = max(range(c, n), key=lambda i: abs(m[i][c]))
-        m[c], m[p] = m[p], m[c]
-        if abs(m[c][c]) < 1e-12:
-            return None
-        for i in range(n):
-            if i != c:
-                f = m[i][c] / m[c][c]
-                m[i] = [x - f * y for x, y in zip(m[i], m[c])]
-    return [m[i][n] / m[i][i] for i in range(n)]
+# How fast each model spends the plan's limit, per token weighted by type: input 1, cache write 1.25, output and
+# thinking 5, cache read 0.025. Measured on a subscription in September 2026 by
+# https://zenn.dev/tksfjt1024/articles/25c0ab111c277c and not published by Anthropic. Haiku 5.5 and Fable 5.2 came
+# out later. Within a family the weight followed the input price (Opus 5 to 5.5: price and weight both x0.8), so they
+# get their predecessor's weight times the price change.
+WEIGHTS = {'claude-opus-5-5': 2.2, 'claude-opus-5': 2.75, 'claude-opus-4': 2.75, 'claude-sonnet-5': 1.5, 'claude-sonnet-4': 2.25,
+           'claude-haiku-5-5': 0.1, 'claude-haiku-4': 1, 'claude-fable-5-2': 8, 'claude-fable-5': 10}
+MEASURED = ('claude-opus-5-5', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-haiku-4')
+CURRENT = ['claude-opus-5-5', 'claude-fable-5-2', 'claude-sonnet-5-5', 'claude-haiku-5-5']
+TOKENS = 'inp + 1.25 * (cw5 + cw1) + 5 * out + 0.025 * cr'
 
 
-def plan_value(db, log):
-    """What a full weekly limit is worth at API prices, per model family.
+def weight(model):
+    model = (model or '').split('[')[0]
+    best = max((k for k in WEIGHTS if model.startswith(k)), key=len, default=None)
+    return WEIGHTS[best] if best else 2.2
 
-    Each reading of the weekly limit says: the percentage used since the window opened (resetsAt minus 7 days)
-    equals the sum, per family, of what was spent since then times what each dollar of that family costs in %.
-    The fit pulls every family toward the pooled figure (all models priced alike against the limit), and only
-    lets a family move away from it where the readings carry enough of that family's spending to tell.
+
+def units(db, a, b):
+    return sum(weight(m) * (t or 0) for m, t in db.execute(
+        f'select model, sum({TOKENS}) from msgs where ts>=? and ts<=? group by model', (a, b)))
+
+
+def plan_value(db, log, now):
+    """What a full weekly limit is worth at API prices, model by model.
+
+    Each model's dollars per unit of limit come from your own last 30 days with it: what it cost at API prices over
+    the limit units it spent. A model you barely use is priced on your Opus work, as if it had done that work.
+    The size of your weekly limit in units comes from your readings of the weekly percentage, against the units spent
+    since that window opened. With no readings yet the page uses the size measured on the plans.
     """
-    eqs = []
+    table = uso.prices()
+    month0 = now - 30 * 24 * HOUR
+    fam = [{'cost': 0.0, 'units': 0.0, 'tok': [0] * 5} for _ in FAMILIES]
+    for m, inp, out, cw5, cw1, cr, c, t in db.execute(f"""select model, sum(inp), sum(out), sum(cw5), sum(cw1), sum(cr),
+            sum(cost), sum({TOKENS}) from msgs where ts>=? group by model""", (month0,)):
+        f = fam[family(m)]
+        f['cost'] += c or 0
+        f['units'] += weight(m) * (t or 0)
+        f['tok'] = [x + (y or 0) for x, y in zip(f['tok'], (inp, out, cw5, cw1, cr))]
+    total_cost = sum(f['cost'] for f in fam)
+    total_units = sum(f['units'] for f in fam)
+    base = fam[0] if fam[0]['units'] else max(fam, key=lambda f: f['units'])
+    out = []
+    for i, f in enumerate(fam):
+        own = f['units'] > 0 and f['cost'] >= 0.05 * total_cost
+        inp, o, cw5, cw1, cr = (f if own else base)['tok']
+        model = CURRENT[i]
+        u = weight(model) * (inp + 1.25 * (cw5 + cw1) + 5 * o + 0.025 * cr)
+        dpu = f['cost'] / f['units'] if own else (uso.cost(table, model, inp, o, cw5, cw1, cr, None) / u if u else 0)
+        out.append({'dpu': dpu * 1e6, 'measured': model.startswith(MEASURED), 'own': own,
+                    'share': round(f['cost'] / (total_cost or 1), 3)})
+
+    # Millions of units per 1% of the weekly limit: least squares through zero over the readings of the last 30 days.
+    su = sp = 0.0
+    n, first = 0, None
     for t, kind, pct, reset in log:
         end = reset_ms(reset)
-        if kind != 'seven_day' or not end or pct < 1 or t > end:
+        if kind != 'seven_day' or not end or pct < 1 or t > end or t < month0:
             continue
-        c = [0.0] * 4
-        for m, v in db.execute('select model, sum(cost) from msgs where ts>=? and ts<=? group by model', (end - WEEK, t)):
-            c[family(m)] += v or 0
-        if sum(c) > 1:
-            eqs.append((c, pct, end))
-    if not eqs:
-        return None
-    pooled = sum(p * sum(c) for c, p, _ in eqs) / sum(sum(c) ** 2 for c, _, _ in eqs)
-    ctc = [[sum(c[i] * c[j] for c, _, _ in eqs) for j in range(4)] for i in range(4)]
-    ctp = [sum(c[i] * p for c, p, _ in eqs) for i in range(4)]
-    # The pull: as strong as a tenth of the average equation, so a family needs a real share of the spending to move.
-    lam = 0.1 * sum(ctc[i][i] for i in range(4)) / len(eqs)
-    w = solve([[ctc[i][j] + (lam if i == j else 0) for j in range(4)] for i in range(4)],
-              [ctp[i] + lam * pooled for i in range(4)]) or [pooled] * 4
-    spent = [sum(c[i] for c, _, _ in eqs) for i in range(4)]
-    total = sum(spent) or 1
-    windows = len({e for _, _, e in eqs})
-    out = []
-    for i in range(4):
-        share = spent[i] / total
-        measured = len(eqs) >= 20 and share >= 0.1 and w[i] > 0
-        wi = w[i] if measured else pooled
-        out.append({'week': round(100 / wi, 2), 'measured': measured, 'share': round(share, 3)})
-    return {'families': out, 'pooled': round(100 / pooled, 2), 'readings': len(eqs), 'windows': windows,
-            'first': min(t for t, k, *_ in log if k == 'seven_day')}
+        u = units(db, end - WEEK, t)
+        if u > 0:
+            su += u * pct
+            sp += pct * pct
+            n += 1
+            first = first or t
+    return {'families': out, 'mixDpu': total_cost / total_units * 1e6 if total_units else 0, 'units30': total_units / 1e6,
+            'cap': su / sp * 100 / 1e6 if sp else None, 'readings': n, 'first': first}
 
 
 def load_log(limits, now, path=LOG):
@@ -182,7 +196,7 @@ def data(db, limits, now, log_path=LOG):
     log = load_log(limits, now, log_path)
     history = [[t, p, r] for t, k, p, r in log if k == 'seven_day' and t >= now - 60 * 24 * HOUR]
     return {
-        'plan': plan_value(db, log), 'history': history,
+        'plan': plan_value(db, log, now), 'history': history,
         'generated': now, 'full': full, 'limits': limits, 'w': w, 'days': days, 'models': models, 'sessions': sessions,
         'rows': rows, 'heat': heat, 'prompts': prompts, 'months': rep['months'],
         'tips': uso.tips(q, week0, c7[2] or 0, c7),

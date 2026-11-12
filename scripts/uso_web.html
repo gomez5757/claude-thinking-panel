@@ -615,37 +615,40 @@ function hero() {
   $('hero').style.display = 'flex'
 }
 
+// Weekly limit in millions of units, measured on Ultra (1,130) in September 2026; Max is half and Pro a tenth.
+const SIZE = { pro: 113, max: 565, ultra: 1130 }
 function plan() {
   document.querySelectorAll('#plans button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.p === state.plan)))
   const P = D.plan, mine = PLANS[state.plan]
-  if (!P) {
-    $('plan').innerHTML = '<p class="empty">Se calcula solo en cuanto Claude termine su proxima respuesta: hace falta leer tu limite semanal.</p>'
+  if (!P || !P.mixDpu) {
+    $('plan').innerHTML = '<p class="empty">Aun no hay gasto de los ultimos 30 dias para calcularlo.</p>'
     return
   }
-  const wk = P.families.map(f => f.week)
-  // Your mix over the last 30 days, all projects: what a full week is worth used the way you use Claude.
-  const from = addDays(today, -29), mix = [0, 0, 0, 0]
-  let spent30 = 0
-  for (const r of D.rows) if (D.days[r[0]] >= from) { mix[famOf(D.models[r[2]])] += r[3]; spent30 += r[3] }
-  const tot = mix.reduce((a, b) => a + b, 0) || 1
-  const week = 1 / mix.reduce((a, v, i) => a + v / tot / wk[i], 0)
+  // Your readings measure the limit of the plan you have, the one picked with the buttons.
+  const U = P.cap || SIZE[state.plan]
+  const week = U * P.mixDpu
   const month = week * MONTH_WEEKS
   const times = month / mine.price
-  const used = (spent30 / (week * (30 / 7))) * 100
+  const used = (P.units30 / (U * (30 / 7))) * 100
   const rows = FAM.map((f, i) => {
+    const F = P.families[i]
     // Fable can take at most half of the weekly limit on Max and Ultra.
     const cap = i === 1 && state.plan !== 'pro' ? 0.5 : 1
-    const v = wk[i] * cap
-    return `<tr><td><span class="dot" style="background:${f.color}"></span>Solo ${f.name}${cap < 1 ? '*' : ''}</td>
+    const v = U * F.dpu * cap
+    const how = `${F.measured ? 'peso medido' : 'peso estimado por su precio'}, ${F.own ? 'con tu uso real' : 'como si hiciera tu trabajo de Opus'}`
+    return `<tr><td style="white-space:nowrap"><span class="dot" style="background:${f.color}"></span>Solo ${f.name}${cap < 1 ? '*' : ''}</td>
       <td class="n">${money(v)}</td><td class="n"><b>${money(v * MONTH_WEEKS)}</b></td><td class="n">${((v * MONTH_WEEKS) / mine.price).toLocaleString('es-ES', { maximumFractionDigits: 0 })}x</td>
-      <td class="small">${P.families[i].measured ? 'medido con tus datos' : 'supuesto igual que el resto'}</td></tr>`
+      <td class="small">${how}</td></tr>`
   }).join('')
   const others = Object.entries(PLANS).filter(([k]) => k !== state.plan)
     .map(([, p]) => `${p.name} (${p.price} $) unos ${money((month / mine.mult) * p.mult)}`).join(' · ')
+  const size = P.cap
+    ? `El tamano de tu limite sale de ${P.readings} ${P.readings === 1 ? 'lectura' : 'lecturas'} de tu porcentaje semanal desde el ${new Date(P.first).toLocaleDateString('es-ES')}, comparadas con lo que gastaste en esa semana.`
+    : 'Aun no hay lecturas de tu limite semanal, asi que el tamano del limite es el medido en Ultra, a la mitad para Max y a la decima parte para Pro.'
   $('plan').innerHTML = `<div><div class="big">${money(month)} <span class="small" style="font-weight:400">al mes en precio de API</span></div>
-    <p class="small" style="margin:4px 0 12px">Usando Claude como lo usas ahora. Pagas ${mine.price} $: <b>te devuelve unas ${times.toLocaleString('es-ES', { maximumFractionDigits: 0 })} veces lo que cuesta</b>${mine.credits ? `, y ademas trae ${mine.credits} $ al mes en creditos de API` : ''}. En los ultimos 30 dias has aprovechado el <b>${pct(used)}</b> de lo que da.</p>
+    <p class="small" style="margin:4px 0 12px">Usando Claude como lo usas ahora. Pagas ${mine.price} $: <b>te devuelve unas ${times.toLocaleString('es-ES', { maximumFractionDigits: 0 })} veces lo que cuesta</b>${mine.credits ? `, y ademas trae ${mine.credits} $ al mes en creditos de API` : ''}. En los ultimos 30 dias has aprovechado el <b>${pct(used)}</b> de lo que da${used > 100 ? ', mas de lo que cabe en tu limite de ahora: alguna semana el limite fue mayor o usaste creditos' : ''}.</p>
     <p class="note">Con tu misma forma de usarlo: ${others}.</p>
-    <p class="note">Sale de comparar tu limite semanal real con lo que has gastado en ese tiempo, con ${P.readings} ${P.readings === 1 ? 'lectura' : 'lecturas'} desde el ${new Date(P.first).toLocaleDateString('es-ES')}. Mientras haya pocas, se supone que cada dolar de API gasta igual de limite en todos los modelos. Con mas lecturas, el panel separa cada modelo; se guardan solas mientras usas Claude.</p></div>
+    <p class="note">Cada modelo gasta el limite a su ritmo, no en proporcion a su precio, y releer la cache gasta muy poco limite. Los pesos son los medidos en una suscripcion en septiembre de 2026. Haiku 5.5 y Fable 5.2 salieron despues, asi que su peso es el del modelo anterior ajustado por su bajada de precio, que es lo que paso de Opus 5 a Opus 5.5. ${size}</p></div>
     <div><table><tr><th>Si usas</th><th class="n">Semana completa</th><th class="n">Al mes</th><th class="n">Tu cuota</th><th>Dato</th></tr>${rows}</table>
     <p class="note">* Fable puede gastar como mucho la mitad del limite semanal en Max y Ultra, por eso su fila es la mitad.</p></div>`
 }
