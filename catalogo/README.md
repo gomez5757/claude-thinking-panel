@@ -20,6 +20,11 @@ The panel opens by itself when a session starts. If you close it, run `/razonami
 
 The panel only receives the thinking that Claude Code is set to show. In the desktop app, set the conversation's transcript view to "thinking" (title bar menu, or Ctrl+O). With the "normal" view the panel stays empty.
 
+## Commands it runs and hooks it adds
+
+- It runs `/compact` only when you press the Compactar button in the panel's banner, and at no other time. The engine queues it until Claude is idle.
+- It adds the `/razonamiento` command and answers it by opening the panel. It does nothing else when that command runs.
+
 ## Translation
 
 Set `translateTo` in the plugin's options. Each finished block is translated by Claude Haiku at low effort through your own Claude session, which uses a little of your plan's usage per block. While a block is being written it shows as written; once it ends it is replaced by the translation.
