@@ -1,5 +1,15 @@
 {
   "name": "claude-thinking-panel",
-  "owner": { "name": "gomez5757" },
-  "plugins": [{ "name": "razonamiento", "source": "./" }]
+  "owner": {
+    "name": "gomez5757"
+  },
+  "metadata": {
+    "description": "Razonamiento: Claude's thinking live in a side panel in Claude Code, with a usage page"
+  },
+  "plugins": [
+    {
+      "name": "razonamiento",
+      "source": "./"
+    }
+  ]
 }

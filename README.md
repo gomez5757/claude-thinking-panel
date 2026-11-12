@@ -62,6 +62,10 @@ Or set them in `~/.claude/settings.json`:
 
 The mod hooks the model's response stream (`turn.step`), copies the thinking chunks into session state and draws them in a pane. For the usage banner and the `/uso` page it reads your Claude Code transcripts in `~/.claude/projects` on your own computer and writes its files to `~/.claude/uso`; nothing of that leaves your computer. The only thing sent anywhere is the optional translation request (to Microsoft with `edge`, or to your own Claude session with Haiku).
 
+## Directory edition
+
+`catalogo/` is the edition submitted to Anthropic's plugin directory. The directory does not allow reading chat history or calling endpoints the author does not own, so it leaves out the `/uso` page, the limits log and Edge's translator, and translates with Haiku only. `tools/catalogo.py` builds it from this plugin: code between `//#if full` and `//#else` or `//#endif` is dropped, and lines between `//#else` and `//#endif` written as `//: <code>` are uncommented. Run `python -I tools/catalogo.py` after a change; `--check` says whether `catalogo/` is current, and `--with-tests <folder>` writes the edition with its tests for `claude plugin test`. Its `plugin.json`, `icon.png` and `README.md` are written by hand.
+
 ## License
 
 MIT

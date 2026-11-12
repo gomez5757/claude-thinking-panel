@@ -32,6 +32,7 @@ test('the pane shows what Claude did and turns the context red from 200k tokens'
   await ui.unmount()
 })
 
+//#if full
 test('/uso runs the web script with the limits and says so', async ($, on) => {
   on('session.usage', () => ({ value: { context: { window: 1000000, tokens: 1 }, rateLimits: [{ kind: 'seven_day', percentUsed: 40, resetsAt: '2026-11-14T17:00:00Z' }] } }))
   on('ui.scroll', () => ({ value: {} }))
@@ -69,3 +70,4 @@ test('each change of the limits is kept in limites.json for the web', async ($, 
   const log = JSON.parse(writes[0].text)
   expect(log[0].slice(1)).toEqual(['seven_day', 12, '2026-11-14T01:00:00Z'])
 })
+//#endif

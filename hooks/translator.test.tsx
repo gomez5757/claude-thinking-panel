@@ -31,6 +31,7 @@ function engine(on: any, edgeOk: boolean) {
   })
 }
 
+//#if full
 for (const [edgeOk, via] of [
   [true, 'Edge'],
   [false, 'Haiku'],
@@ -51,3 +52,28 @@ for (const [edgeOk, via] of [
     await ui.unmount()
   })
 }
+//#else
+//: test('the pane shows the Haiku translation and sends nothing over the network', { options: { translateTo: 'Spanish' } }, async ($, on) => {
+  //: let fetched = 0
+  //: on('session.usage', () => ({ value: { context: { window: 200000 }, rateLimits: [] } }))
+  //: on('ui.scroll', () => ({ value: {} }))
+  //: mock.clock(on)
+  //: on('http.fetch', () => (fetched++, { value: { status: 500, ok: false, headers: {}, text: '' } }))
+  //: on('model.complete', () => ({ value: { isAnswered: true, text: 'Hola', usage: { input_tokens: 1, output_tokens: 1 } } }))
+  //: on('turn.step', async function* (_, e) {
+    //: yield { kind: 'thinking', index: 0, text: 'Hello' }
+    //: return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null, id: 'm1' }
+  //: })
+  //: on('command.register', () => ({ value: { command: 'razonamiento' } }))
+  //: on('ui.open', () => ({ value: { isPlaced: true } }))
+  //: on('session.start', (_, e) => ({ cwd: e.cwd }))
+  //: await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  //: for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'opus', messageCount: 1 }));
+  //: for (let i = 0; i < 20; i++) await Promise.resolve()
+
+  //: const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  //: expect((await ui.find({ type: 'Markdown', text: /^Hola$/ }))?.text).toBe('Hola')
+  //: expect(fetched).toBe(0)
+  //: await ui.unmount()
+//: })
+//#endif

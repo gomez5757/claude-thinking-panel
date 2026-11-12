@@ -5,6 +5,7 @@ import type { Block, Usage } from '../types'
 
 const PANE = 'razonamiento'
 const TITLE = 'Razonamiento'
+//#if full
 const CODES: Record<string, string> = {
   Spanish: 'es',
   English: 'en',
@@ -49,14 +50,17 @@ async function edge($: EngineInterface, lang: string, text: string) {
   const parts: { translations: { text: string }[] }[] = JSON.parse(r.text)
   return parts.map(part => part.translations[0]?.text ?? '').join('\n\n')
 }
+//#endif
 
 // Edge first (free, no key); if it fails, Haiku at low effort through the person's own Claude session.
 // Answers which engine translated it, so the pane can show it.
 async function translate($: EngineInterface, translator: string, lang: string, text: string) {
+  //#if full
   if (translator === 'edge') {
     const es = await edge($, lang, text).catch(() => undefined)
     if (es) return { es, via: 'Edge' as const }
   }
+  //#endif
   const r = await $.model.complete({
     model: 'haiku',
     effort: 'low',
@@ -84,9 +88,12 @@ async function measure($: EngineInterface) {
     if (elapsed > 60 * 60 * 1000) now.week = Math.round((week.percentUsed * WEEK) / elapsed)
   }
   await update($, usage, () => now)
+  //#if full
   await record($, rateLimits).catch(() => undefined)
+  //#endif
 }
 
+//#if full
 // The limits' percentages exist only here, reading by reading; nothing else keeps them. Each change goes to
 // ~/.claude/uso/limites.json, so the usage web can work out what a full limit is worth per model.
 let lastSeen = ''
@@ -110,6 +117,7 @@ async function record($: EngineInterface, limits: { kind: string; percentUsed: n
   }
   await $.fs.write(path, JSON.stringify(log.slice(-50000)))
 }
+//#endif
 
 // Runs /compact as if the person typed it: the engine queues it until the session is idle,
 // so a press during a turn waits instead of failing.
@@ -160,6 +168,7 @@ function action(e: Record<string, unknown> & { tool: string }) {
   return `Usa ${t.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, '')}`
 }
 
+//#if full
 async function web($: EngineInterface, quiet = false) {
   try {
     const { rateLimits } = await $.session.usage({ breakdown: 'summary' })
@@ -181,10 +190,15 @@ async function web($: EngineInterface, quiet = false) {
     if (!quiet) $.ui.toast(`No se ha podido abrir la web de uso: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
+//#endif
 
 export const register: Register = (on, options) => {
   const lang = typeof options.translateTo === 'string' ? options.translateTo : 'off'
+  //#if full
   const translator = options.translator === 'haiku' ? 'haiku' : 'edge'
+  //#else
+  //: const translator = 'haiku'
+  //#endif
   let lastPin = 0
 
   on('session.start', async ($, e, next) => {
@@ -192,16 +206,19 @@ export const register: Register = (on, options) => {
       name: 'razonamiento',
       description: 'Abre el panel con el razonamiento de Claude',
     })
+    //#if full
     await $.command.register({
       name: 'uso',
       description: 'Abre en el navegador una web con tus limites, tu gasto y consejos',
     })
+    //#endif
     void $.ui.open({ id: PANE, title: TITLE })
     void measure($).catch(() => undefined)
 
     return next(e)
   })
 
+  //#if full
   // /uso: scripts/uso_web.py reads the transcripts, writes a web page and opens it in the browser.
   // The limits only exist here, in the engine, so they go to the script as an argument.
   on('command.run', { command: 'uso' }, async $ => {
@@ -220,6 +237,7 @@ export const register: Register = (on, options) => {
     }
     return result
   })
+  //#endif
 
   on('command.run', { command: 'razonamiento' }, async $ => {
     await $.ui.open({ id: PANE, title: TITLE })
